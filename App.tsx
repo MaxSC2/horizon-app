@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
   StatusBar, SafeAreaView, Modal, Alert, Dimensions, ActivityIndicator,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { loadState, persistState } from "./src/utils/storage";
 import {
   fmt, uid, getMonday, weekDates, todayIdx, TODAY, calcStreak,
@@ -1384,6 +1385,7 @@ function ProfileTab({ T, state, setState }: any) {
 
 /* ══════════ APP ROOT ══════════ */
 export default function App() {
+  const insets = useSafeAreaInsets();
   const [state, setState_] = useState<any>(DEFAULTS);
   const [loaded, setLoaded] = useState(false);
   const [tab, setTab] = useState("dashboard");
@@ -1451,13 +1453,18 @@ export default function App() {
 
   if (!loaded) return <View style={{ flex: 1, backgroundColor: "#07090D", justifyContent: "center", alignItems: "center" }}><ActivityIndicator size="large" color="#00C4F0" /></View>;
 
-  if (!state.onboarded) return <OnboardingScreen T={T} onComplete={completeOnboarding} />;
+  if (!state.onboarded) return (
+    <View style={{ flex: 1, backgroundColor: T.bg, paddingTop: insets.top, paddingBottom: insets.bottom }}>
+      <StatusBar barStyle={T.dark ? "light-content" : "dark-content"} translucent backgroundColor="transparent" />
+      <OnboardingScreen T={T} onComplete={completeOnboarding} />
+    </View>
+  );
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
-      <StatusBar barStyle={T.dark ? "light-content" : "dark-content"} />
+    <View style={{ flex: 1, backgroundColor: T.bg }}>
+      <StatusBar barStyle={T.dark ? "light-content" : "dark-content"} translucent backgroundColor="transparent" />
       {toast && (
-        <View style={{ position: "absolute", top: 60, left: 0, right: 0, alignItems: "center", zIndex: 500 }}>
+        <View style={{ position: "absolute", top: insets.top + 10, left: 0, right: 0, alignItems: "center", zIndex: 500 }}>
           <View style={{ backgroundColor: T.card, borderColor: T.warn, borderWidth: 2, borderRadius: 16, padding: 14, flexDirection: "row", alignItems: "center", gap: 12, maxWidth: 340, width: "90%" }}>
             <Text style={{ fontSize: 36 }}>{toast.emoji}</Text>
             <View>
@@ -1469,7 +1476,7 @@ export default function App() {
         </View>
       )}
       {showThemes && <ThemePicker T={T} currentThemeId={themeId} onSelect={(id: string) => setState((s: any) => ({ ...s, themeId: id }))} onClose={() => setShowThemes(false)} />}
-      <View style={{ flex: 1, maxWidth: MAX_W, alignSelf: "center", width: "100%" }}>
+      <View style={{ flex: 1, maxWidth: MAX_W, alignSelf: "center", width: "100%", paddingTop: insets.top, paddingBottom: insets.bottom }}>
         <Header T={T} streak={state.streak || 0} onOpenThemes={() => setShowThemes(true)} />
         <View style={{ flex: 1 }}>
           {tab === "dashboard" && <DashboardTab T={T} state={state} setState={setState} onStartWorkout={startWorkout} />}
@@ -1481,6 +1488,6 @@ export default function App() {
         </View>
         <BottomNav T={T} tab={tab} setTab={setTab} hasActive={!!session} />
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
