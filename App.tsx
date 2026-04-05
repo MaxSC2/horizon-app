@@ -649,6 +649,28 @@ function TasksGoalsTab({ T, tasks, setTasks, goals, setGoals }: any) {
                         <Badge color={c.color} T={T}>{c.emoji} {c.label}</Badge>
                       </View>
                       {streak > 1 && <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: T.warn, marginTop: 4 }}>🔥 {streak} дн. подряд</Text>}
+                      {task.recurring && (
+                        <View style={{ flexDirection: "row", gap: 3, marginTop: 6 }}>
+                          {Array.from({ length: 14 }, (_, i) => {
+                            const d = new Date();
+                            d.setDate(d.getDate() - 13 + i);
+                            const dd = fmt(d);
+                            return (
+                              <View
+                                key={i}
+                                style={{
+                                  width: 14,
+                                  height: 14,
+                                  borderRadius: 3,
+                                  backgroundColor: task.completedDates?.includes(dd) ? c.color : T.lo,
+                                  borderColor: dd === TODAY ? T.primary : "transparent",
+                                  borderWidth: dd === TODAY ? 1.5 : 1,
+                                }}
+                              />
+                            );
+                          })}
+                        </View>
+                      )}
                     </View>
                     <TouchableOpacity onPress={() => setTasks((t: any) => t.filter((x: any) => x.id !== task.id))}><Text style={{ fontSize: 16, color: T.muted, opacity: 0.6 }}>×</Text></TouchableOpacity>
                   </View>
@@ -702,7 +724,25 @@ function TasksGoalsTab({ T, tasks, setTasks, goals, setGoals }: any) {
                 </View>
               </Card>
             )}
-            {goals.filter((g: any) => !g.completed).length === 0 && !addingGoal && <View style={{ alignItems: "center", paddingVertical: 40 }}><Text style={{ fontSize: 40, marginBottom: 10 }}>🌅</Text><Text style={{ fontFamily: "System", fontSize: 14, color: T.muted }}>Поставь первую цель</Text></View>}
+            {goals.filter((g: any) => !g.completed).length === 0 && !addingGoal && (
+              <View style={{ alignItems: "center", paddingVertical: 40 }}>
+                <Text style={{ fontSize: 40, marginBottom: 10 }}>🌅</Text>
+                <Text style={{ fontFamily: "System", fontSize: 14, color: T.muted }}>Поставь первую цель</Text>
+              </View>
+            )}
+            {!addingGoal && (
+              <Card T={T} style={{ marginBottom: 12 }}>
+                <Lbl T={T}>📋 Шаблоны целей</Lbl>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                  {GOAL_TEMPLATES.map((t, i) => (
+                    <TouchableOpacity key={i} onPress={() => { setGoalForm({ title: t.title, desc: t.desc, cat: t.cat, target: t.target, unit: t.unit, deadline: "", emoji: t.emoji }); setAddingGoal(true); setEditingGoalId(null); }}
+                      style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderColor: T.bord, borderWidth: 1, backgroundColor: T.lo }}>
+                      <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: T.txt }}>{t.emoji} {t.title}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </Card>
+            )}
             {goals.filter((g: any) => !g.completed).map((g: any) => {
               const pct = Math.round((g.currentValue / Math.max(g.targetValue, 1)) * 100);
               return (
@@ -734,6 +774,25 @@ function TasksGoalsTab({ T, tasks, setTasks, goals, setGoals }: any) {
                 </Card>
               );
             })}
+            {goals.filter((g: any) => g.completed).length > 0 && (
+              <View style={{ marginTop: 8 }}>
+                <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: T.muted }}>
+                  ДОСТИГНУТЫЕ ({goals.filter((g: any) => g.completed).length})
+                </Text>
+                {goals.filter((g: any) => g.completed).map((g: any) => (
+                  <Card key={g.id} T={T} style={{ marginBottom: 8, opacity: 0.7 }}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                      <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 15, color: T.success }}>
+                        ✓ {g.emoji} {g.title}
+                      </Text>
+                      <TouchableOpacity onPress={() => setGoals((g2: any) => g2.filter((x: any) => x.id !== g.id))}>
+                        <Text style={{ color: T.muted }}>×</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </Card>
+                ))}
+              </View>
+            )}
           </>
         )}
       </ScrollView>
@@ -749,11 +808,20 @@ function JournalBodyTab({ T, journal, setJournal, bodyLog, setBodyLog, reflectio
   const [jMood, setJMood] = useState(3);
   const [jEnergy, setJEnergy] = useState(3);
   const [jSleep, setJSleep] = useState(7);
+  const [addBody, setAddBody] = useState(false);
+  const [bodyForm, setBodyForm] = useState({ weight: "", chest: "", waist: "", arms: "" });
 
   const saveJournal = () => {
     if (!jText.trim()) return;
     setJournal((j: any) => [{ id: uid(), date: TODAY, text: jText.trim(), mood: jMood, energy: jEnergy, sleep: jSleep, createdAt: new Date().toISOString() }, ...j]);
     setJText(""); setJMood(3); setJEnergy(3); setJSleep(7); setAdding(false);
+  };
+
+  const saveBody = () => {
+    if (!bodyForm.weight && !bodyForm.chest && !bodyForm.waist && !bodyForm.arms) return;
+    setBodyLog((l: any) => [{ id: uid(), date: TODAY, ...bodyForm }, ...l]);
+    setBodyForm({ weight: "", chest: "", waist: "", arms: "" });
+    setAddBody(false);
   };
 
   return (
@@ -828,6 +896,7 @@ function JournalBodyTab({ T, journal, setJournal, bodyLog, setBodyLog, reflectio
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                       <Text style={{ fontSize: 20 }}>{m?.e}</Text>
                       {entry.energy && <Text style={{ fontSize: 16, opacity: 0.7 }}>{en?.e}</Text>}
+                      {entry.sleep > 0 && <Text style={{ fontSize: 14, opacity: 0.7 }}>💤 {entry.sleep}ч</Text>}
                       <View>
                         <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: entry.date === TODAY ? T.primary : T.muted }}>
                           {entry.date === TODAY ? "Сегодня" : new Date(entry.date + "T12:00:00").toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })}
@@ -845,8 +914,47 @@ function JournalBodyTab({ T, journal, setJournal, bodyLog, setBodyLog, reflectio
         )}
         {sub === "body" && (
           <>
-            <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 22, color: T.txt, marginBottom: 14 }}>Трекер тела</Text>
-            {bodyLog.length === 0 && <View style={{ alignItems: "center", paddingVertical: 40 }}><Text style={{ fontSize: 40, marginBottom: 10 }}>⚖️</Text><Text style={{ fontFamily: "System", fontSize: 14, color: T.muted }}>Начни отслеживать тело</Text></View>}
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 22, color: T.txt }}>Трекер тела</Text>
+              <Btn T={T} onPress={() => setAddBody(!addBody)} style={{ minHeight: 36, paddingHorizontal: 14, fontSize: 13 }}>{addBody ? "Закрыть" : "+ Замер"}</Btn>
+            </View>
+            {addBody && (
+              <Card T={T} style={{ marginBottom: 12, borderColor: `${T.primary}44` }}>
+                <Lbl T={T}>Новые замеры</Lbl>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8, marginBottom: 12 }}>
+                  {[["weight", "⚖️ Вес (кг)", "70"], ["chest", "📏 Грудь (см)", "90"], ["waist", "📏 Талия (см)", "80"], ["arms", "💪 Бицепс (см)", "30"]].map(([k, l, ph]) => (
+                    <View key={k} style={{ flex: 1, minWidth: "45%" }}>
+                      <Lbl T={T}>{l}</Lbl>
+                      <TextInput keyboardType="numeric" value={bodyForm[k as keyof typeof bodyForm]} onChangeText={(t) => setBodyForm((f) => ({ ...f, [k]: t }))} placeholder={ph} placeholderTextColor={T.muted}
+                        style={{ height: 40, borderRadius: 8, borderColor: T.bord, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontWeight: "700", fontSize: 18, paddingHorizontal: 10, marginTop: 4 }} />
+                    </View>
+                  ))}
+                </View>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <Btn T={T} variant="muted" onPress={() => setAddBody(false)} style={{ flex: 1 }}>Отмена</Btn>
+                  <Btn T={T} onPress={saveBody} style={{ flex: 2 }}>Сохранить</Btn>
+                </View>
+              </Card>
+            )}
+            {bodyLog.length > 1 && (
+              <Card T={T} style={{ marginBottom: 12 }}>
+                <Lbl T={T}>Динамика</Lbl>
+                <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 3, height: 100, marginTop: 8 }}>
+                  {bodyLog.slice(0, 14).reverse().map((entry: any, i: number) => {
+                    const maxW = Math.max(...bodyLog.map((e: any) => parseFloat(e.weight) || 0), 1);
+                    const h = entry.weight ? (parseFloat(entry.weight) / maxW) * 80 : 0;
+                    return (
+                      <View key={entry.id} style={{ flex: 1, alignItems: "center" }}>
+                        {entry.weight && <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 9, color: T.primary, marginBottom: 2 }}>{entry.weight}</Text>}
+                        <View style={{ width: "100%", height: h, backgroundColor: T.primary, borderRadius: 3, opacity: 0.7 }} />
+                        <Text style={{ fontFamily: "System", fontSize: 7, color: T.muted, marginTop: 2 }}>{entry.date.slice(5)}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </Card>
+            )}
+            {bodyLog.length === 0 && !addBody && <View style={{ alignItems: "center", paddingVertical: 40 }}><Text style={{ fontSize: 40, marginBottom: 10 }}>⚖️</Text><Text style={{ fontFamily: "System", fontSize: 14, color: T.muted }}>Начни отслеживать тело</Text></View>}
             {bodyLog.slice(0, 10).map((entry: any) => (
               <Card key={entry.id} T={T} style={{ marginBottom: 8 }}>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
