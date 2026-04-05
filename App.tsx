@@ -327,6 +327,13 @@ function DashboardTab({ T, state, setState, onStartWorkout }: any) {
     });
   };
 
+  const setFocus = (text: string) => {
+    setState((s: any) => ({ ...s, focus: { text, date: text ? TODAY : "" } }));
+  };
+
+  const focusToday = (state.focus?.date === TODAY) ? state.focus?.text || "" : "";
+  const achievements = state.achievements || [];
+
   return (
     <ScrollView style={{ padding: 14 }} contentContainerStyle={{ gap: 12 }}>
       <Card T={T} style={{ borderColor: `${T.primary}22`, backgroundColor: `${T.primary}10` }}>
@@ -354,6 +361,73 @@ function DashboardTab({ T, state, setState, onStartWorkout }: any) {
             <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 14, color: T.warn }}>Серия {workoutStreak} дн.</Text>
           </View>
         )}
+        {achievements.length > 0 && (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 6 }}>
+            <Text style={{ fontSize: 13 }}>🏆</Text>
+            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: T.warn }}>{achievements.length} достиж.</Text>
+          </View>
+        )}
+      </Card>
+
+      {/* Daily Focus */}
+      <Card T={T} style={{ borderColor: `${T.warn}33`, backgroundColor: `${T.warn}08` }}>
+        <Lbl T={T}>🎯 Главный фокус дня</Lbl>
+        <TextInput
+          value={focusToday}
+          onChangeText={setFocus}
+          placeholder="Одна самая важная задача на сегодня…"
+          placeholderTextColor={T.muted}
+          style={{
+            width: "100%",
+            borderRadius: 8,
+            borderColor: T.bord,
+            borderWidth: 1.5,
+            backgroundColor: T.lo,
+            color: T.txt,
+            fontFamily: "System",
+            fontSize: 15,
+            padding: 10,
+            marginTop: 8,
+            minHeight: 44,
+          }}
+        />
+      </Card>
+
+      {/* Sleep quick-log */}
+      <Card T={T}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <Lbl T={T}>💤 Сон сегодня</Lbl>
+          {todayJournal?.sleep > 0 && (
+            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 14, color: todayJournal.sleep >= 7 ? T.success : todayJournal.sleep >= 6 ? T.warn : T.danger }}>
+              {todayJournal.sleep}ч {todayJournal.sleep >= 7 ? "✓" : ""}
+            </Text>
+          )}
+        </View>
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          {[4, 5, 6, 7, 8, 9].map((h) => (
+            <TouchableOpacity key={h} onPress={() => {
+              setState((s: any) => {
+                const j = [...s.journal];
+                const idx = j.findIndex((x: any) => x.date === TODAY);
+                if (idx >= 0) j[idx] = { ...j[idx], sleep: h };
+                else j.unshift({ id: uid(), date: TODAY, text: "", mood: 3, energy: 3, sleep: h });
+                return { ...s, journal: j };
+              });
+            }}
+              style={{
+                flex: 1,
+                paddingVertical: 6,
+                borderRadius: 8,
+                borderColor: todayJournal?.sleep === h ? T.primary : T.bord,
+                borderWidth: 1.5,
+                backgroundColor: todayJournal?.sleep === h ? `${T.primary}20` : T.lo,
+                alignItems: "center",
+                marginHorizontal: 2,
+              }}>
+              <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: todayJournal?.sleep === h ? T.primary : T.muted }}>{h}ч</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </Card>
 
       <Card T={T}>
@@ -1412,10 +1486,12 @@ function ProfileTab({ T, state, setState }: any) {
   const [editing, setEditing] = useState(false);
   const [mp, setMp] = useState(state.user.maxPushups);
   const [note, setNote] = useState(state.user.note || "");
+  const [asymNote, setAsymNote] = useState(state.user.asymmetryNote || "");
   const [showReset, setShowReset] = useState(false);
   const [showThemes, setShowThemes] = useState(false);
   const total = Object.values(state.history).filter((l: any) => l.completed).length;
-  const save = () => { setState((s: any) => ({ ...s, user: { ...s.user, maxPushups: parseInt(mp) || 27, note } })); setEditing(false); };
+  const wR = { min: Math.round((state.user.maxPushups || 27) * 0.6), max: Math.round((state.user.maxPushups || 27) * 0.7) };
+  const save = () => { setState((s: any) => ({ ...s, user: { ...s.user, maxPushups: parseInt(mp) || 27, note, asymmetryNote: asymNote } })); setEditing(false); };
 
   return (
     <ScrollView style={{ padding: 14 }} contentContainerStyle={{ gap: 12 }}>
@@ -1424,7 +1500,9 @@ function ProfileTab({ T, state, setState }: any) {
         <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
           <View style={{ alignItems: "center" }}><Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 28, color: T.primary }}>{total}</Text><Lbl T={T}>Тренировок</Lbl></View>
           <View style={{ width: 1, backgroundColor: T.bord }} />
-          <View style={{ alignItems: "center" }}><Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 28, color: T.success }}>{state.user.maxPushups}</Text><Lbl T={T}>Макс. повт.</Lbl></View>
+          <View style={{ alignItems: "center" }}><Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 28, color: T.success }}>{wR.min}–{wR.max}</Text><Lbl T={T}>Рабочий диап.</Lbl></View>
+          <View style={{ width: 1, backgroundColor: T.bord }} />
+          <View style={{ alignItems: "center" }}><Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 28, color: T.warn }}>{state.user.maxPushups}</Text><Lbl T={T}>Макс. повт.</Lbl></View>
         </View>
       </Card>
       <Card T={T}>
@@ -1437,8 +1515,15 @@ function ProfileTab({ T, state, setState }: any) {
           <TextInput keyboardType="numeric" value={String(mp)} onChangeText={(t) => setMp(t)}
             style={{ height: 44, borderRadius: 8, borderColor: T.primary, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontWeight: "700", fontSize: 22, paddingHorizontal: 12, marginTop: 6, marginBottom: 10 }} />
         ) : <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 32, color: T.primary, marginBottom: 10 }}>{state.user.maxPushups}</Text>}
+        <View style={{ padding: 10, backgroundColor: T.lo, borderRadius: 10, marginBottom: 10 }}>
+          <Lbl T={T}>Рабочий диапазон (60–70%)</Lbl>
+          <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 20, color: T.success, marginTop: 4 }}>{wR.min}–{wR.max} повт</Text>
+        </View>
         {editing && (
           <>
+            <Lbl T={T}>Заметки об асимметрии</Lbl>
+            <TextInput value={asymNote} onChangeText={setAsymNote} placeholder="Напр.: левое плечо слабее…" placeholderTextColor={T.muted} multiline
+              style={{ borderRadius: 8, borderColor: T.bord, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 14, padding: 10, minHeight: 60, marginTop: 6, marginBottom: 10 }} />
             <Lbl T={T}>Заметки</Lbl>
             <TextInput value={note} onChangeText={setNote} multiline
               style={{ borderRadius: 8, borderColor: T.bord, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 14, padding: 10, minHeight: 60, marginTop: 6, marginBottom: 10 }} />
