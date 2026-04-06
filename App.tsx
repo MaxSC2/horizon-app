@@ -3,12 +3,14 @@ import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
   StatusBar, SafeAreaView, Modal, Alert, Dimensions, ActivityIndicator,
 } from "react-native";
+import Svg, { Circle, Line, Path, Rect, Text as SvgText, Polygon, Defs, LinearGradient, Stop, Polyline } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { loadState, persistState } from "./src/utils/storage";
 import {
   fmt, uid, getMonday, weekDates, todayIdx, TODAY, calcStreak,
-  taskStreakForId, getPRs, getAllProgressionSuggestions,
-  sleepLabel, last7MoodData, calcLifeScore,
+  taskStreakForId, weeklyWorkoutStats, exerciseTrend, getPRs,
+  getAllProgressionSuggestions, weeklyTonnage, moodWorkoutCorrelation,
+  computeAuto1RM, sleepLabel, last7MoodData, calcLifeScore,
   checkAchievements, buildAIContext,
 } from "./src/utils/helpers";
 import { callAI } from "./src/utils/ai";
@@ -71,9 +73,14 @@ function Ring({ pct, size = 64, color, label, T }: any) {
 /* ══════════ NUMPAD ══════════ */
 function Numpad({ T, value, onChange, onConfirm, unit, placeholder, color }: any) {
   const display = value || "";
-  const tap = (k: string) => { if (k === "⌫") onChange(display.slice(0, -1)); else if (display.length < 4) onChange(display + k); };
+  const tap = (k: string) => {
+    if (k === "⌫") onChange(display.slice(0, -1));
+    else if (k === "+1") { const v = parseFloat(display) || 0; onChange(String(Math.max(0, v + 1))); }
+    else if (k === "-1") { const v = parseFloat(display) || 0; onChange(String(Math.max(0, v - 1))); }
+    else if (display.length < 4) onChange(display + k);
+  };
   const col = color || T.primary;
-  const rows = [["1","2","3"],["4","5","6"],["7","8","9"],["⌫","0","✓"]];
+  const rows = [["1","2","3"],["4","5","6"],["7","8","9"],["-1","0","+1"],["⌫","⌫","✓"]];
   return (
     <Modal transparent animationType="slide" visible>
       <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,.7)", justifyContent: "flex-end" }}>
@@ -83,14 +90,24 @@ function Numpad({ T, value, onChange, onConfirm, unit, placeholder, color }: any
               {display || placeholder}
               {display && <Text style={{ fontSize: 22, color: T.muted }}> {unit}</Text>}
             </Text>
+            {display && (
+              <View style={{ flexDirection: "row", gap: 12, marginTop: 6 }}>
+                <TouchableOpacity onPress={() => tap("-1")} style={{ paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8, borderColor: T.bord, borderWidth: 1, backgroundColor: T.lo }}>
+                  <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 14, color: T.muted }}>-1</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => tap("+1")} style={{ paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8, borderColor: T.bord, borderWidth: 1, backgroundColor: T.lo }}>
+                  <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 14, color: T.muted }}>+1</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
             {rows.flat().map((k, i) => {
-              const isConfirm = k === "✓"; const isDel = k === "⌫";
+              const isConfirm = k === "✓"; const isDel = k === "⌫"; const isAdj = k === "+1" || k === "-1";
               return (
                 <TouchableOpacity key={i} onPress={() => (isConfirm ? onConfirm(display) : tap(k))}
-                  style={{ flex: 1, height: 56, borderRadius: 12, justifyContent: "center", alignItems: "center", backgroundColor: isConfirm ? col : isDel ? `${T.danger}15` : T.lo }}>
-                  <Text style={{ fontFamily: "System", fontWeight: isConfirm ? "900" : "700", fontSize: isConfirm ? 18 : 22, color: isConfirm ? "#000" : isDel ? T.danger : T.txt }}>
+                  style={{ flex: 1, height: 56, borderRadius: 12, justifyContent: "center", alignItems: "center", backgroundColor: isConfirm ? col : isDel ? `${T.danger}15` : isAdj ? `${T.primary}10` : T.lo }}>
+                  <Text style={{ fontFamily: "System", fontWeight: isConfirm ? "900" : "700", fontSize: isConfirm ? 18 : isAdj ? 16 : 22, color: isConfirm ? "#000" : isDel ? T.danger : isAdj ? T.primary : T.txt }}>
                     {isConfirm ? "ГОТОВО" : k}
                   </Text>
                 </TouchableOpacity>
@@ -193,28 +210,82 @@ function Header({ T, streak, onOpenThemes }: any) {
 
 /* ══════════ THEME PICKER ══════════ */
 function ThemePicker({ T, currentThemeId, onSelect, onClose }: any) {
+  const darkThemes = THEME_LIST.filter((t) => t.dark);
+  const lightThemes = THEME_LIST.filter((t) => !t.dark);
+  const current = THEME_LIST.find((x) => x.id === currentThemeId);
+
+  const renderThemeCard = (theme: any) => {
+    const th = getTheme(theme.id);
+    const cur = currentThemeId === theme.id;
+    return (
+      <TouchableOpacity key={theme.id} onPress={() => onSelect(theme.id)}
+        style={{
+          width: "47%",
+          borderRadius: 14,
+          backgroundColor: th.card,
+          borderColor: cur ? th.primary : T.bord,
+          borderWidth: cur ? 2.5 : 1.5,
+          padding: 12,
+          gap: 8,
+        }}>
+        {/* Color palette strip */}
+        <View style={{ flexDirection: "row", gap: 3, marginBottom: 4 }}>
+          {[th.primary, th.success, th.warn, th.danger].map((c, i) => (
+            <View key={i} style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: c }} />
+          ))}
+        </View>
+        {/* Mini UI preview */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: `${th.primary}20`, justifyContent: "center", alignItems: "center" }}>
+            <Text style={{ fontSize: 14 }}>{theme.icon}</Text>
+          </View>
+          <View>
+            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: th.txt }}>{theme.name}</Text>
+            <Text style={{ fontFamily: "System", fontSize: 9, color: th.muted }}>{theme.desc}</Text>
+          </View>
+        </View>
+        {cur && (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: th.primary }} />
+            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 10, color: th.primary }}>Сейчас</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <Modal transparent animationType="slide" visible>
       <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,.8)", justifyContent: "flex-end" }}>
-        <View style={{ backgroundColor: T.surf, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 20 }}>
+        <View style={{ backgroundColor: T.surf, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 20, maxHeight: "85%" }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 16 }}>
-            <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 18, color: T.txt }}>Тема оформления</Text>
+            <View>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 18, color: T.txt }}>Тема оформления</Text>
+              <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted, marginTop: 2 }}>{THEME_LIST.length} стилей · выбери свой горизонт</Text>
+            </View>
             <TouchableOpacity onPress={onClose}><Text style={{ fontSize: 20, color: T.muted }}>✕</Text></TouchableOpacity>
           </View>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-            {THEME_LIST.map((theme) => {
-              const th = getTheme(theme.id); const cur = currentThemeId === theme.id;
-              return (
-                <TouchableOpacity key={theme.id} onPress={() => onSelect(theme.id)}
-                  style={{ width: 56, height: 56, borderRadius: 14, backgroundColor: th.bg, borderColor: cur ? th.primary : T.bord, borderWidth: cur ? 2.5 : 2, justifyContent: "center", alignItems: "center" }}>
-                  <Text style={{ fontSize: 22 }}>{theme.icon}</Text>
-                  {cur && <View style={{ position: "absolute", top: 4, right: 4, width: 8, height: 8, borderRadius: 4, backgroundColor: th.primary }} />}
-                </TouchableOpacity>
-              );
-            })}
+
+          {/* Dark themes */}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
+            <Text style={{ fontSize: 14 }}>🌙</Text>
+            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: T.muted, letterSpacing: 1, textTransform: "uppercase" }}>Тёмные темы</Text>
           </View>
-          <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted, marginTop: 10, textAlign: "center" }}>
-            {THEME_LIST.find((x) => x.id === currentThemeId)?.icon} {THEME_LIST.find((x) => x.id === currentThemeId)?.name}
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
+            {darkThemes.map(renderThemeCard)}
+          </View>
+
+          {/* Light themes */}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
+            <Text style={{ fontSize: 14 }}>☀️</Text>
+            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: T.muted, letterSpacing: 1, textTransform: "uppercase" }}>Светлые темы</Text>
+          </View>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
+            {lightThemes.map(renderThemeCard)}
+          </View>
+
+          <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted, textAlign: "center", marginTop: 4 }}>
+            {current?.icon} {current?.name} — {current?.desc}
           </Text>
         </View>
       </View>
@@ -252,6 +323,8 @@ function BottomNav({ T, tab, setTab, hasActive }: any) {
 function ExerciseCard({ T, exercise, logs, onComplete, onValueChange, onRest, prVal }: any) {
   const [activeNumpad, setActiveNumpad] = useState<number | null>(null);
   const allDone = logs.every((s: any) => s.done);
+  const maxLogged = Math.max(0, ...logs.map((s: any) => parseInt(s.value) || 0));
+  const isNewPR = maxLogged > 0 && prVal > 0 && maxLogged > prVal;
   return (
     <>
       {activeNumpad !== null && (
@@ -267,8 +340,16 @@ function ExerciseCard({ T, exercise, logs, onComplete, onValueChange, onRest, pr
               {exercise.sets} подхода · {exercise.reps} {exercise.type === "seconds" ? "сек" : "повт"}{exercise.notes ? ` · ${exercise.notes}` : ""}
             </Text>
           </View>
-          {allDone && <Text style={{ fontSize: 18, color: T.success }}>✓</Text>}
-          {prVal > 0 && <Text style={{ fontFamily: "System", fontSize: 11, color: T.muted }}>рек: {prVal}</Text>}
+          <View style={{ alignItems: "flex-end", gap: 4 }}>
+            {allDone && <Text style={{ fontSize: 18, color: T.success }}>✓</Text>}
+            {isNewPR && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: `${T.warn}18`, borderColor: `${T.warn}44`, borderWidth: 1, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 }}>
+                <Text style={{ fontSize: 10 }}>🏆</Text>
+                <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 11, color: T.warn, letterSpacing: 0.5 }}>PR!</Text>
+              </View>
+            )}
+            {prVal > 0 && <Text style={{ fontFamily: "System", fontSize: 11, color: T.muted }}>рек: {prVal}</Text>}
+          </View>
         </View>
         {logs.map((log: any, si: number) => (
           <View key={si} style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
@@ -615,11 +696,20 @@ function WorkoutTab({ T, session, setSession, onFinish, prs, history, onStart }:
                 </TouchableOpacity>
               ))}
             </View>
+            <Text style={{ fontFamily: "System", fontSize: 13, padding: 8, borderRadius: 8, backgroundColor: T.lo, color: session.difficulty <= 3 ? T.primary : session.difficulty >= 9 ? T.danger : session.difficulty <= 6 ? T.success : T.warn, marginTop: 8 }}>
+              {session.difficulty <= 3 ? "😴 Слишком легко" : session.difficulty <= 6 ? "💪 Хороший диапазон" : session.difficulty <= 8 ? "🔥 Тяжело, но продуктивно" : "😤 Очень тяжело — следи за восстановлением"}
+            </Text>
           </Card>
           <Card T={T}>
             <Lbl T={T}>Болевые ощущения</Lbl>
             <TextInput placeholder="Опиши, если что-то беспокоило…" placeholderTextColor={T.muted} value={session.painNotes} onChangeText={(t) => upd({ painNotes: t })} multiline
               style={{ width: "100%", borderRadius: 8, borderColor: T.bord, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 14, padding: 10, minHeight: 80 }} />
+            {session.painNotes?.toLowerCase().match(/сустав|колен|плеч|локт|запяст/) && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginTop: 8, padding: 8, backgroundColor: `${T.danger}15`, borderColor: `${T.danger}44`, borderWidth: 1, borderRadius: 8 }}>
+                <Text style={{ fontSize: 15 }}>⚠️</Text>
+                <Text style={{ fontFamily: "System", fontSize: 13, color: T.danger, flex: 1 }}>Боль в суставах — снизь нагрузку и следи за техникой</Text>
+              </View>
+            )}
           </Card>
           <Btn T={T} variant="success" onPress={onFinish} style={{ width: "100%", fontSize: 18, minHeight: 52 }}>✓ Сохранить тренировку</Btn>
         </>
@@ -1116,6 +1206,50 @@ function MentorTab({ T, state, setState }: any) {
     } catch (e: any) { setError(e.message); } finally { setLoading(false); }
   };
 
+  const regenerate = async () => {
+    const lastUser = [...messages].reverse().find((m: any) => m.role === "user");
+    if (!lastUser) return;
+    const msgs = messages.slice(0, -1);
+    setMessages(msgs); setLoading(true); setError(null);
+    try {
+      const reply = await callAI(msgs, buildAIContext(state), aiConfig);
+      const aMsg = { role: "assistant", content: reply, ts: Date.now(), provider: aiConfig.provider || "claude" };
+      const final = [...msgs, aMsg]; setMessages(final); saveHistory(final);
+    } catch (e: any) { setError(e.message); } finally { setLoading(false); }
+  };
+
+  const clearChat = () => {
+    Alert.alert("Очистить чат", "Удалить всю историю переписки?", [
+      { text: "Отмена", style: "cancel" },
+      { text: "Очистить", style: "destructive", onPress: () => { setMessages([]); saveHistory([]); } },
+    ]);
+  };
+
+  const copyMessage = (text: string) => {
+    Alert.alert("Скопировано", text.slice(0, 100) + (text.length > 100 ? "…" : ""));
+  };
+
+  const renderMarkdown = (text: string) => {
+    const lines = text.split("\n");
+    return lines.map((line, i) => {
+      if (line.startsWith("### ")) return <Text key={i} style={{ fontFamily: "System", fontWeight: "900", fontSize: 16, color: T.txt, marginTop: 8, marginBottom: 2 }}>{line.slice(4)}</Text>;
+      if (line.startsWith("## ")) return <Text key={i} style={{ fontFamily: "System", fontWeight: "900", fontSize: 18, color: T.txt, marginTop: 10, marginBottom: 4 }}>{line.slice(3)}</Text>;
+      if (line.startsWith("# ")) return <Text key={i} style={{ fontFamily: "System", fontWeight: "900", fontSize: 20, color: T.txt, marginTop: 12, marginBottom: 6 }}>{line.slice(2)}</Text>;
+      if (line.startsWith("---")) return <View key={i} style={{ height: 1, backgroundColor: T.bord, marginVertical: 8 }} />;
+      if (line.startsWith("- ") || line.startsWith("* ")) {
+        const parts = parseInline(line.slice(2), T);
+        return <View key={i} style={{ flexDirection: "row", gap: 6, marginBottom: 2 }}><Text style={{ color: T.primary }}>•</Text><Text style={{ fontFamily: "System", fontSize: 14, color: T.txt, lineHeight: 20, flex: 1 }}>{parts}</Text></View>;
+      }
+      if (/^\d+\.\s/.test(line)) {
+        const parts = parseInline(line.replace(/^\d+\.\s/, ""), T);
+        const num = line.match(/^(\d+)\./)?.[1];
+        return <View key={i} style={{ flexDirection: "row", gap: 6, marginBottom: 2 }}><Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 14, color: T.primary, minWidth: 18 }}>{num}.</Text><Text style={{ fontFamily: "System", fontSize: 14, color: T.txt, lineHeight: 20, flex: 1 }}>{parts}</Text></View>;
+      }
+      if (line.trim() === "") return <View key={i} style={{ height: 6 }} />;
+      return <Text key={i} style={{ fontFamily: "System", fontSize: 14, color: T.txt, lineHeight: 20 }}>{parseInline(line, T)}</Text>;
+    });
+  };
+
   return (
     <View style={{ flex: 1 }}>
       <View style={{ padding: 10, borderBottomWidth: 1, borderBottomColor: T.bord, backgroundColor: T.surf }}>
@@ -1124,9 +1258,21 @@ function MentorTab({ T, state, setState }: any) {
             <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: `${provColor}15`, borderColor: `${provColor}55`, borderWidth: 1.5, justifyContent: "center", alignItems: "center" }}>
               <Text style={{ fontSize: 19 }}>✨</Text>
             </View>
-            <View><Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 20, color: T.txt }}>НЕЙРО</Text><Text style={{ fontFamily: "System", fontSize: 11, color: T.muted }}>{prov.name}</Text></View>
+            <View>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 20, color: T.txt }}>НЕЙРО</Text>
+              <Text style={{ fontFamily: "System", fontSize: 11, color: T.muted }}>{prov.name}{aiConfig.model ? ` · ${aiConfig.model}` : ""}</Text>
+            </View>
           </View>
-          <TouchableOpacity onPress={() => setShowSettings(true)}><Text style={{ fontSize: 18, color: T.muted }}>⚙️</Text></TouchableOpacity>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            {messages.length > 0 && (
+              <TouchableOpacity onPress={clearChat}>
+                <Text style={{ fontSize: 16, color: T.muted }}>🗑</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={() => setShowSettings(true)}>
+              <Text style={{ fontSize: 18, color: T.muted }}>⚙️</Text>
+            </TouchableOpacity>
+          </View>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: "row" }}>
           {QUICK_PROMPTS.map(({ icon, text }, i) => (
@@ -1145,14 +1291,48 @@ function MentorTab({ T, state, setState }: any) {
             </View>
             <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 26, color: T.txt, marginBottom: 6 }}>НЕЙРО</Text>
             <Text style={{ fontFamily: "System", fontSize: 14, color: T.muted, textAlign: "center", lineHeight: 22, maxWidth: 260 }}>Персональный ИИ-ассистент.{"\n"}Знает твои тренировки, цели и настроение.</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 24, justifyContent: "center" }}>
+              {[
+                { icon: "📈", text: "Анализ прогресса" },
+                { icon: "📅", text: "Планирование" },
+                { icon: "🧠", text: "Работа с разумом" },
+                { icon: "❤️", text: "Восстановление" },
+              ].map((f, i) => (
+                <View key={i} style={{ padding: 10, backgroundColor: T.lo, borderColor: T.bord, borderWidth: 1, borderRadius: 12, width: "45%", alignItems: "center", gap: 4 }}>
+                  <Text style={{ fontSize: 20 }}>{f.icon}</Text>
+                  <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: T.txt, textAlign: "center" }}>{f.text}</Text>
+                </View>
+              ))}
+            </View>
           </View>
         )}
         {messages.map((m: any, i: number) => {
           const isUser = m.role === "user";
           return (
             <View key={i} style={{ alignItems: isUser ? "flex-end" : "flex-start", marginBottom: 12 }}>
-              <View style={{ maxWidth: "88%", padding: isUser ? 12 : 14, borderRadius: 18, backgroundColor: isUser ? provColor : T.card, borderColor: isUser ? "transparent" : T.bord, borderWidth: isUser ? 0 : 1 }}>
-                <Text style={{ fontFamily: "System", fontSize: 14, color: isUser ? "#000" : T.txt, lineHeight: 20 }}>{m.content}</Text>
+              <View style={{ maxWidth: "88%", borderRadius: 18, backgroundColor: isUser ? provColor : T.card, borderColor: isUser ? "transparent" : T.bord, borderWidth: isUser ? 0 : 1 }}>
+                <View style={{ padding: isUser ? 12 : 14 }}>
+                  {isUser ? (
+                    <Text style={{ fontFamily: "System", fontSize: 14, color: "#000", lineHeight: 20 }}>{m.content}</Text>
+                  ) : (
+                    renderMarkdown(m.content)
+                  )}
+                </View>
+                {!isUser && (
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 14, paddingBottom: 8 }}>
+                    <Text style={{ fontFamily: "System", fontSize: 9, color: T.muted }}>{m.provider || prov.name}</Text>
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      <TouchableOpacity onPress={() => copyMessage(m.content)}>
+                        <Text style={{ fontSize: 12, color: T.muted }}>📋</Text>
+                      </TouchableOpacity>
+                      {i === messages.length - 1 && !loading && (
+                        <TouchableOpacity onPress={regenerate}>
+                          <Text style={{ fontSize: 12, color: T.muted }}>🔄</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                )}
               </View>
               {m.ts && <Text style={{ fontFamily: "System", fontSize: 9, color: T.muted, marginTop: 2 }}>{new Date(m.ts).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</Text>}
             </View>
@@ -1163,6 +1343,11 @@ function MentorTab({ T, state, setState }: any) {
           <View style={{ padding: 12, backgroundColor: `${T.danger}12`, borderColor: `${T.danger}44`, borderWidth: 1, borderRadius: 14 }}>
             <Text style={{ fontFamily: "System", fontSize: 13, color: T.danger }}>{error}</Text>
             {error.includes("ключ") && <TouchableOpacity onPress={() => setShowSettings(true)}><Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: T.primary, marginTop: 6 }}>Открыть настройки →</Text></TouchableOpacity>}
+            {error.includes("CORS") && (
+              <TouchableOpacity onPress={() => { setState((s: any) => ({ ...s, aiConfig: { ...s.aiConfig, provider: "claude" } })); setError(null); }}>
+                <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: T.primary, marginTop: 6 }}>Переключиться на Claude →</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
       </ScrollView>
@@ -1175,10 +1360,28 @@ function MentorTab({ T, state, setState }: any) {
             <Text style={{ fontSize: 22, color: input.trim() && !loading ? "#000" : T.muted }}>→</Text>
           </TouchableOpacity>
         </View>
+        {messages.length > 0 && (
+          <Text style={{ fontFamily: "System", fontSize: 10, color: T.muted, textAlign: "center", marginTop: 4 }}>{messages.filter((m: any) => m.role === "assistant").length} ответов · {prov.name}</Text>
+        )}
       </View>
       {showSettings && <AISettingsModal T={T} aiConfig={aiConfig} onSave={(cfg: any) => setState((s: any) => ({ ...s, aiConfig: { ...(s.aiConfig || {}), ...cfg } }))} onClose={() => setShowSettings(false)} />}
     </View>
   );
+}
+
+function parseInline(text: string, T: any) {
+  const parts: React.ReactNode[] = [];
+  const regex = /(\*\*(.+?)\*\*|`(.+?)`)/g;
+  let lastIndex = 0;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
+    if (match[2]) parts.push(<Text key={match.index} style={{ fontFamily: "System", fontWeight: "700", color: T.txt }}>{match[2]}</Text>);
+    else if (match[3]) parts.push(<Text key={match.index} style={{ fontFamily: "System", backgroundColor: T.lo, paddingHorizontal: 4, paddingVertical: 2, borderRadius: 4, color: T.primary }}>{match[3]}</Text>);
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
+  return parts.length === 1 && typeof parts[0] === "string" ? parts[0] : parts;
 }
 
 /* ══════════ AI SETTINGS MODAL ══════════ */
@@ -1188,8 +1391,27 @@ function AISettingsModal({ T, aiConfig, onSave, onClose }: any) {
   const [apiKey, setApiKey] = useState(cfg.apiKey || "");
   const [model, setModel] = useState(cfg.model || "");
   const [systemExtra, setSystemExtra] = useState(cfg.systemExtra || "");
+  const [persona, setPersona] = useState(cfg.persona || "");
   const prov = AI_PROVIDERS.find((p) => p.id === provider) || AI_PROVIDERS[0];
-  const save = () => { onSave({ provider, apiKey: apiKey.trim(), model: model || prov.defaultModel, endpoint: "", systemExtra }); onClose(); };
+  const save = () => { onSave({ provider, apiKey: apiKey.trim(), model: model || prov.defaultModel, endpoint: "", systemExtra, persona }); onClose(); };
+
+  const PERSONAS = [
+    { id: "", name: "По умолчанию", emoji: "🤖", desc: "Стандартный AI-коуч" },
+    { id: "coach", name: "Строгий тренер", emoji: "💪", desc: "Жёсткий, мотивирует, не жалеет" },
+    { id: "mentor", name: "Спокойный наставник", emoji: "🧘", desc: "Мудрый, поддерживает, объясняет" },
+    { id: "scientist", name: "Учёный-биохакер", emoji: "🔬", desc: "Научный подход, данные, исследования" },
+    { id: "psychologist", name: "Спортивный психолог", emoji: "🧠", desc: "Ментальное здоровье, мотивация" },
+  ];
+
+  const personaSystem: Record<string, string> = {
+    coach: "Ты строгий тренер. Говоришь прямо, мотивируешь жёстко, не жалеешь. Используешь эмодзи 💪🔥. Короткие фразы, конкретные указания.",
+    mentor: "Ты спокойный мудрый наставник. Объясняешь подробно, поддерживаешь, не давишь. Мягкий тон, используешь 🧘✨.",
+    scientist: "Ты учёный-биохакер. Опираешься на данные и исследования. Используешь точные термины, ссылки на науку. 🔬📊.",
+    psychologist: "Ты спортивный психолог. Фокус на ментальном здоровье, мотивации, страхе и тревоге. Эмпатичный, поддерживающий. 🧠💭.",
+  };
+
+  const fullSystemExtra = personaSystem[persona] ? `${personaSystem[persona]}\n\n${systemExtra}` : systemExtra;
+
   return (
     <Modal transparent animationType="slide" visible>
       <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,.88)", justifyContent: "flex-end" }}>
@@ -1208,6 +1430,7 @@ function AISettingsModal({ T, aiConfig, onSave, onClose }: any) {
                     <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: p.color }} />
                   </View>
                   <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 12, color: active ? p.color : T.txt }}>{p.short}</Text>
+                  {p.badge && <Text style={{ fontFamily: "System", fontSize: 8, color: p.color, marginTop: 2 }}>{p.badge}</Text>}
                 </TouchableOpacity>
               );
             })}
@@ -1229,12 +1452,32 @@ function AISettingsModal({ T, aiConfig, onSave, onClose }: any) {
                     <TouchableOpacity key={m} onPress={() => setModel(m)}
                       style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderColor: cur ? prov.color : T.bord, borderWidth: 1.5, backgroundColor: cur ? `${prov.color}10` : T.lo }}>
                       <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: cur ? prov.color : T.txt }}>{m}</Text>
+                      {m === prov.defaultModel && <Text style={{ fontFamily: "System", fontSize: 8, color: T.muted }}>по умолч.</Text>}
                     </TouchableOpacity>
                   );
                 })}
               </View>
             </View>
           )}
+
+          {/* Persona presets */}
+          <View style={{ marginBottom: 14 }}>
+            <Lbl T={T}>Персонаж</Lbl>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+              {PERSONAS.map((p) => {
+                const cur = persona === p.id;
+                return (
+                  <TouchableOpacity key={p.id} onPress={() => setPersona(p.id)}
+                    style={{ flex: 1, minWidth: "45%", padding: 10, borderRadius: 10, borderColor: cur ? T.primary : T.bord, borderWidth: 1.5, backgroundColor: cur ? `${T.primary}10` : T.lo }}>
+                    <Text style={{ fontSize: 16, marginBottom: 2 }}>{p.emoji}</Text>
+                    <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: cur ? T.primary : T.txt }}>{p.name}</Text>
+                    <Text style={{ fontFamily: "System", fontSize: 10, color: T.muted, marginTop: 2 }}>{p.desc}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
           <View style={{ marginBottom: 14 }}>
             <Lbl T={T}>Доп. инструкции</Lbl>
             <TextInput value={systemExtra} onChangeText={setSystemExtra} placeholder="Напр.: отвечай только по-русски" placeholderTextColor={T.muted} multiline
@@ -1263,6 +1506,8 @@ function StatsTab({ T, history, tasks, goals, journal, achievements, user, setSt
   const earned = achievements || [];
   const notEarned = ACHIEVEMENT_DEFS.filter((a) => !earned.includes(a.id));
   const trackedEx = PLAN.flatMap((d) => d.exercises || []).reduce((a: any[], e) => { if (!a.find((x) => x.id === e.id)) a.push(e); return a; }, []);
+  const avgDiff = totalW > 0 ? (Object.values(history).reduce((s: number, l: any) => s + (l.difficulty || 5), 0) / totalW).toFixed(1) : "—";
+  const avgSleep = journal.length > 0 ? (journal.reduce((s: number, j: any) => s + (j.sleep || 0), 0) / journal.filter((j: any) => j.sleep > 0).length).toFixed(1) : "—";
 
   return (
     <View style={{ flex: 1 }}>
@@ -1277,9 +1522,9 @@ function StatsTab({ T, history, tasks, goals, journal, achievements, user, setSt
         {sub === "stats" && (
           <>
             <View style={{ flexDirection: "row", gap: 7, marginBottom: 14 }}>
-              {[{ l: "Тренировок", v: totalW, c: T.primary }, { l: "🔥 Серия", v: streak, c: T.success }].map((s, i) => (
+              {[{ l: "Тренировок", v: totalW, c: T.primary }, { l: "🔥 Серия", v: streak, c: T.success }, { l: "Ср. сложн.", v: avgDiff, c: T.warn }, { l: "Сон avg", v: avgSleep !== "—" ? `${avgSleep}ч` : "—", c: T.muted }].map((s, i) => (
                 <Card key={i} T={T} style={{ flex: 1, alignItems: "center", padding: 10 }}>
-                  <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 20, color: s.c }}>{s.v}</Text><Lbl T={T}>{s.l}</Lbl>
+                  <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 18, color: s.c }}>{s.v}</Text><Lbl T={T}>{s.l}</Lbl>
                 </Card>
               ))}
             </View>
@@ -1310,17 +1555,56 @@ function StatsTab({ T, history, tasks, goals, journal, achievements, user, setSt
                 })}
               </View>
               {trend.length > 1 ? (
-                <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 3, height: 80 }}>
-                  {trend.map((d: any, i: number) => {
-                    const max = Math.max(...trend.map((t: any) => t.val), 1); const h = (d.val / max) * 70;
-                    return (
-                      <View key={i} style={{ flex: 1, alignItems: "center" }}>
-                        <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 10, color: T.success, marginBottom: 2 }}>{d.val}</Text>
-                        <View style={{ width: "100%", height: h, backgroundColor: T.success, borderRadius: 3, opacity: 0.7 }} />
-                        <Text style={{ fontFamily: "System", fontSize: 8, color: T.muted, marginTop: 2 }}>{d.date}</Text>
-                      </View>
-                    );
-                  })}
+                <View style={{ marginTop: 4 }}>
+                  <Svg height="120" width="100%">
+                    {(() => {
+                      const max = Math.max(...trend.map((t: any) => t.val), 1);
+                      const w = 300; const h = 100;
+                      const prVal = prs[selEx] || 0;
+                      const pts = trend.map((d: any, i: number) => `${(i / Math.max(trend.length - 1, 1)) * w},${h - (d.val / max) * (h - 10)}`).join(" ");
+                      const areaPts = `0,${h} ${pts} ${w},${h}`;
+                      const last3 = trend.slice(-3);
+                      const goingUp = last3.length >= 2 && last3[last3.length - 1].val >= last3[0].val;
+                      return (
+                        <>
+                          <Defs>
+                            <LinearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
+                              <Stop offset="0" stopColor={T.success} stopOpacity="0.3" />
+                              <Stop offset="1" stopColor={T.success} stopOpacity="0" />
+                            </LinearGradient>
+                          </Defs>
+                          <Polygon points={areaPts} fill="url(#grad)" />
+                          {prVal > 0 && (
+                            <Line x1="0" y1={h - (prVal / max) * (h - 10)} x2={w} y2={h - (prVal / max) * (h - 10)} stroke={T.warn} strokeWidth="1.5" strokeDasharray="6,4" />
+                          )}
+                          <Polyline points={pts} fill="none" stroke={T.success} strokeWidth="2.5" strokeLinejoin="round" />
+                          {trend.map((d: any, i: number) => {
+                            const cx = (i / Math.max(trend.length - 1, 1)) * w;
+                            const cy = h - (d.val / max) * (h - 10);
+                            return (
+                              <g key={i}>
+                                <Circle cx={cx} cy={cy} r="4" fill={T.success} stroke={T.card} strokeWidth="2" />
+                                <SvgText x={cx} y={cy - 10} textAnchor="middle" fill={T.success} fontSize="10" fontWeight="700">{d.val}</SvgText>
+                                <SvgText x={cx} y={h + 14} textAnchor="middle" fill={T.muted} fontSize="8">{d.date}</SvgText>
+                              </g>
+                            );
+                          })}
+                        </>
+                      );
+                    })()}
+                  </Svg>
+                  {(() => {
+                    const last3 = trend.slice(-3);
+                    if (last3.length >= 2) {
+                      const goingUp = last3[last3.length - 1].val >= last3[0].val;
+                      return (
+                        <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: goingUp ? T.success : T.danger, textAlign: "center", marginTop: 4 }}>
+                          {goingUp ? "📈 Растёт!" : "📉 Снижение"}
+                        </Text>
+                      );
+                    }
+                    return null;
+                  })()}
                 </View>
               ) : <Text style={{ fontFamily: "System", fontSize: 13, color: T.muted, textAlign: "center", paddingVertical: 20 }}>Нужно минимум 2 записи</Text>}
             </Card>
@@ -1344,6 +1628,196 @@ function StatsTab({ T, history, tasks, goals, journal, achievements, user, setSt
                 {alerts.map((a: any, i: number) => <Text key={i} style={{ fontFamily: "System", fontSize: 14, color: T.txt, paddingVertical: 5, borderBottomWidth: i < alerts.length - 1 ? 1 : 0, borderBottomColor: T.bord }}>{a.message}</Text>)}
               </Card>
             )}
+
+            {/* Life Balance Radar Chart */}
+            {(() => {
+              const score = calcLifeScore(history, tasks, journal);
+              const vals = [
+                { label: "Трен.", value: score.workout },
+                { label: "Задачи", value: score.tasks ?? 0 },
+                { label: "Цели", value: goals.filter((g: any) => g.completed).length > 0 ? 100 : goals.length > 0 ? 50 : 0 },
+                { label: "Дневн.", value: score.journal },
+                { label: "Серия", value: Math.min(streak * 10, 100) },
+              ];
+              const cx = 100; const cy = 90; const r = 70;
+              const axes = 5;
+              const levels = [0.2, 0.4, 0.6, 0.8, 1.0];
+              const getPoint = (angle: number, ratio: number) => ({
+                x: cx + r * ratio * Math.cos(angle - Math.PI / 2),
+                y: cy + r * ratio * Math.sin(angle - Math.PI / 2),
+              });
+              const gridPts = levels.map((lv) =>
+                Array.from({ length: axes }, (_, i) => {
+                  const angle = (i / axes) * Math.PI * 2;
+                  return getPoint(angle, lv);
+                })
+              );
+              const dataPts = vals.map((v, i) => {
+                const angle = (i / axes) * Math.PI * 2;
+                return getPoint(angle, Math.max(v.value, 0) / 100);
+              });
+              const polyStr = dataPts.map((p) => `${p.x},${p.y}`).join(" ");
+              return (
+                <Card T={T} style={{ marginBottom: 14 }}>
+                  <Lbl T={T}>🕸 Баланс жизни</Lbl>
+                  <Svg height="200" width="100%" viewBox="0 0 200 180">
+                    {gridPts.map((pts, li) => (
+                      <Polygon key={li} points={pts.map((p) => `${p.x},${p.y}`).join(" ")} fill="none" stroke={T.bord} strokeWidth="0.8" />
+                    ))}
+                    {Array.from({ length: axes }, (_, i) => {
+                      const angle = (i / axes) * Math.PI * 2;
+                      const end = getPoint(angle, 1);
+                      return <Line key={i} x1={cx} y1={cy} x2={end.x} y2={end.y} stroke={T.bord} strokeWidth="0.8" />;
+                    })}
+                    <Polygon points={polyStr} fill={`${T.primary}30`} stroke={T.primary} strokeWidth="2" />
+                    {dataPts.map((p, i) => (
+                      <g key={i}>
+                        <Circle cx={p.x} cy={p.y} r="3.5" fill={T.primary} stroke={T.card} strokeWidth="1.5" />
+                        <SvgText x={p.x} y={p.y - 8} textAnchor="middle" fill={T.primary} fontSize="9" fontWeight="700">{vals[i].value}</SvgText>
+                      </g>
+                    ))}
+                    {vals.map((v, i) => {
+                      const angle = (i / axes) * Math.PI * 2;
+                      const labelPt = getPoint(angle, 1.18);
+                      return <SvgText key={i} x={labelPt.x} y={labelPt.y} textAnchor="middle" fill={T.muted} fontSize="9">{v.label}</SvgText>;
+                    })}
+                  </Svg>
+                </Card>
+              );
+            })()}
+
+            {/* Weekly Workouts Bar Chart */}
+            {(() => {
+              const wStats = weeklyWorkoutStats(history);
+              const maxCount = Math.max(...wStats.map((w: any) => w.count), 1);
+              const barW = 28; const barGap = 8; const chartW = wStats.length * (barW + barGap);
+              const chartH = 100;
+              return (
+                <Card T={T} style={{ marginBottom: 14 }}>
+                  <Lbl T={T}>📊 Тренировки по неделям</Lbl>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                    <Svg height={chartH + 30} width={chartW + 20}>
+                      {wStats.map((w: any, i: number) => {
+                        const x = 10 + i * (barW + barGap);
+                        const h = (w.count / maxCount) * (chartH - 20);
+                        return (
+                          <g key={i}>
+                            <Rect x={x} y={chartH - h - 15} width={barW} height={h} rx="4" fill={w.count > 0 ? T.primary : T.lo} />
+                            <SvgText x={x + barW / 2} y={chartH - h - 18} textAnchor="middle" fill={w.count > 0 ? T.primary : T.muted} fontSize="10" fontWeight="700">{w.count}</SvgText>
+                            <SvgText x={x + barW / 2} y={chartH + 5} textAnchor="middle" fill={T.muted} fontSize="8">{w.week}</SvgText>
+                          </g>
+                        );
+                      })}
+                    </Svg>
+                  </ScrollView>
+                </Card>
+              );
+            })()}
+
+            {/* Weekly Tonnage Area Chart */}
+            {(() => {
+              const wTonnage = weeklyTonnage(history);
+              if (!wTonnage || wTonnage.length === 0) return null;
+              const maxT = Math.max(...wTonnage.map((w: any) => w.tonnage), 1);
+              const w = 300; const h = 80;
+              const pts = wTonnage.map((d: any, i: number) => `${(i / Math.max(wTonnage.length - 1, 1)) * w},${h - (d.tonnage / maxT) * (h - 10)}`).join(" ");
+              const areaPts = `0,${h} ${pts} ${w},${h}`;
+              return (
+                <Card T={T} style={{ marginBottom: 14 }}>
+                  <Lbl T={T}>📈 Недельный тоннаж</Lbl>
+                  <Svg height={h + 30} width="100%" viewBox={`0 0 ${w} ${h + 30}`}>
+                    <Defs>
+                      <LinearGradient id="tonnageGrad" x1="0" y1="0" x2="0" y2="1">
+                        <Stop offset="0" stopColor={T.warn} stopOpacity="0.3" />
+                        <Stop offset="1" stopColor={T.warn} stopOpacity="0" />
+                      </LinearGradient>
+                    </Defs>
+                    <Polygon points={areaPts} fill="url(#tonnageGrad)" />
+                    <Polyline points={pts} fill="none" stroke={T.warn} strokeWidth="2.5" strokeLinejoin="round" />
+                    {wTonnage.map((d: any, i: number) => {
+                      const cx = (i / Math.max(wTonnage.length - 1, 1)) * w;
+                      const cy = h - (d.tonnage / maxT) * (h - 10);
+                      return (
+                        <g key={i}>
+                          <Circle cx={cx} cy={cy} r="3.5" fill={T.warn} stroke={T.card} strokeWidth="1.5" />
+                          <SvgText x={cx} y={cy - 8} textAnchor="middle" fill={T.warn} fontSize="9" fontWeight="700">{d.tonnage}</SvgText>
+                          <SvgText x={cx} y={h + 14} textAnchor="middle" fill={T.muted} fontSize="8">{d.week}</SvgText>
+                        </g>
+                      );
+                    })}
+                  </Svg>
+                </Card>
+              );
+            })()}
+
+            {/* Mood x Workout Correlation */}
+            {(() => {
+              const corr = moodWorkoutCorrelation(history, journal);
+              if (corr.length < 2) return null;
+              const w = 300; const h = 100;
+              const moodPts = corr.filter((d: any) => d.mood).map((d: any, i, arr) => `${(i / Math.max(arr.length - 1, 1)) * w},${h - ((d.mood - 1) / 4) * (h - 15)}`).join(" ");
+              const energyPts = corr.filter((d: any) => d.energy).map((d: any, i, arr) => `${(i / Math.max(arr.length - 1, 1)) * w},${h - ((d.energy - 1) / 4) * (h - 15)}`).join(" ");
+              return (
+                <Card T={T} style={{ marginBottom: 14 }}>
+                  <Lbl T={T}>📉 Настроение и тренировки</Lbl>
+                  <Svg height={h + 30} width="100%" viewBox={`0 0 ${w} ${h + 30}`}>
+                    {moodPts && <Polyline points={moodPts} fill="none" stroke={T.primary} strokeWidth="2" strokeLinejoin="round" />}
+                    {energyPts && <Polyline points={energyPts} fill="none" stroke={T.success} strokeWidth="2" strokeDasharray="4,3" strokeLinejoin="round" />}
+                    {corr.filter((d: any) => d.mood).map((d: any, i: number, arr: any[]) => {
+                      const cx = (i / Math.max(arr.length - 1, 1)) * w;
+                      const cy = h - ((d.mood - 1) / 4) * (h - 15);
+                      return <Circle key={i} cx={cx} cy={cy} r="3" fill={T.primary} />;
+                    })}
+                    <SvgText x="5" y="12" fill={T.primary} fontSize="9">— Настроение</SvgText>
+                    <SvgText x="100" y="12" fill={T.success} fontSize="9">--- Энергия</SvgText>
+                  </Svg>
+                </Card>
+              );
+            })()}
+
+            {/* Sleep 30-day Area Chart */}
+            {(() => {
+              const sleepData = Array.from({ length: 30 }, (_, i) => {
+                const d = new Date();
+                d.setDate(d.getDate() - 29 + i);
+                const dd = fmt(d);
+                const entry = journal.filter((j: any) => j.date === dd).slice(-1)[0];
+                return { date: d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" }), sleep: entry?.sleep || 0 };
+              }).filter((d) => d.sleep > 0);
+              if (sleepData.length < 2) return null;
+              const w = 300; const h = 80;
+              const maxS = 10;
+              const pts = sleepData.map((d: any, i: number) => `${(i / Math.max(sleepData.length - 1, 1)) * w},${h - (d.sleep / maxS) * (h - 10)}`).join(" ");
+              const areaPts = `0,${h} ${pts} ${w},${h}`;
+              const refY = h - (7 / maxS) * (h - 10);
+              return (
+                <Card T={T} style={{ marginBottom: 14 }}>
+                  <Lbl T={T}>💤 Сон за 30 дней</Lbl>
+                  <Svg height={h + 30} width="100%" viewBox={`0 0 ${w} ${h + 30}`}>
+                    <Defs>
+                      <LinearGradient id="sleepGrad" x1="0" y1="0" x2="0" y2="1">
+                        <Stop offset="0" stopColor={T.success} stopOpacity="0.25" />
+                        <Stop offset="1" stopColor={T.success} stopOpacity="0" />
+                      </LinearGradient>
+                    </Defs>
+                    <Line x1="0" y1={refY} x2={w} y2={refY} stroke={T.muted} strokeWidth="1" strokeDasharray="3,3" />
+                    <SvgText x={w - 5} y={refY - 4} textAnchor="end" fill={T.muted} fontSize="8">7ч</SvgText>
+                    <Polygon points={areaPts} fill="url(#sleepGrad)" />
+                    <Polyline points={pts} fill="none" stroke={T.success} strokeWidth="2" strokeLinejoin="round" />
+                    {sleepData.map((d: any, i: number) => {
+                      const cx = (i / Math.max(sleepData.length - 1, 1)) * w;
+                      const cy = h - (d.sleep / maxS) * (h - 10);
+                      return (
+                        <g key={i}>
+                          <Circle cx={cx} cy={cy} r="3" fill={d.sleep >= 7 ? T.success : d.sleep >= 6 ? T.warn : T.danger} stroke={T.card} strokeWidth="1.5" />
+                          {i % 5 === 0 && <SvgText x={cx} y={h + 14} textAnchor="middle" fill={T.muted} fontSize="8">{d.date}</SvgText>}
+                        </g>
+                      );
+                    })}
+                  </Svg>
+                </Card>
+              );
+            })()}
           </>
         )}
         {sub === "achievements" && (
