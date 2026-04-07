@@ -3,7 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
   StatusBar, SafeAreaView, Modal, Alert, Dimensions, ActivityIndicator, Share,
 } from "react-native";
-import Svg, { Circle, Line, Path, Rect, Text as SvgText, Polygon, Defs, LinearGradient, Stop, Polyline } from "react-native-svg";
+import Svg, { Circle, G, Line, Path, Rect, Text as SvgText, Polygon, Defs, LinearGradient, Stop, Polyline } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { loadState, persistState } from "./src/utils/storage";
 import {
@@ -1244,11 +1244,11 @@ function JournalBodyTab({ T, journal, setJournal, bodyLog, setBodyLog, reflectio
                         const cx = (i / Math.max(weightData.length - 1, 1)) * w;
                         const cy = h - ((parseFloat(d.weight) - minW) / range) * (h - 15) - 5;
                         return (
-                          <g key={i}>
+                          <G key={i}>
                             <Circle cx={cx} cy={cy} r="4" fill={T.primary} stroke={T.card} strokeWidth="2" />
                             <SvgText x={cx} y={cy - 8} textAnchor="middle" fill={T.primary} fontSize="9" fontWeight="700">{d.weight}</SvgText>
                             <SvgText x={cx} y={h + 14} textAnchor="middle" fill={T.muted} fontSize="8">{d.date.slice(5)}</SvgText>
-                          </g>
+                          </G>
                         );
                       })}
                     </Svg>
@@ -1746,11 +1746,11 @@ function StatsTab({ T, history, tasks, goals, journal, achievements, user, setSt
                             const cx = (i / Math.max(trend.length - 1, 1)) * w;
                             const cy = h - (d.val / max) * (h - 10);
                             return (
-                              <g key={i}>
+                          <G key={i}>
                                 <Circle cx={cx} cy={cy} r="4" fill={T.success} stroke={T.card} strokeWidth="2" />
                                 <SvgText x={cx} y={cy - 10} textAnchor="middle" fill={T.success} fontSize="10" fontWeight="700">{d.val}</SvgText>
                                 <SvgText x={cx} y={h + 14} textAnchor="middle" fill={T.muted} fontSize="8">{d.date}</SvgText>
-                              </g>
+                          </G>
                             );
                           })}
                         </>
@@ -1835,10 +1835,10 @@ function StatsTab({ T, history, tasks, goals, journal, achievements, user, setSt
                     })}
                     <Polygon points={polyStr} fill={`${T.primary}30`} stroke={T.primary} strokeWidth="2" />
                     {dataPts.map((p, i) => (
-                      <g key={i}>
+                      <G key={i}>
                         <Circle cx={p.x} cy={p.y} r="3.5" fill={T.primary} stroke={T.card} strokeWidth="1.5" />
                         <SvgText x={p.x} y={p.y - 8} textAnchor="middle" fill={T.primary} fontSize="9" fontWeight="700">{vals[i].value}</SvgText>
-                      </g>
+                      </G>
                     ))}
                     {vals.map((v, i) => {
                       const angle = (i / axes) * Math.PI * 2;
@@ -1865,11 +1865,11 @@ function StatsTab({ T, history, tasks, goals, journal, achievements, user, setSt
                         const x = 10 + i * (barW + barGap);
                         const h = (w.count / maxCount) * (chartH - 20);
                         return (
-                          <g key={i}>
+                          <G key={i}>
                             <Rect x={x} y={chartH - h - 15} width={barW} height={h} rx="4" fill={w.count > 0 ? T.primary : T.lo} />
                             <SvgText x={x + barW / 2} y={chartH - h - 18} textAnchor="middle" fill={w.count > 0 ? T.primary : T.muted} fontSize="10" fontWeight="700">{w.count}</SvgText>
                             <SvgText x={x + barW / 2} y={chartH + 5} textAnchor="middle" fill={T.muted} fontSize="8">{w.week}</SvgText>
-                          </g>
+                          </G>
                         );
                       })}
                     </Svg>
@@ -1902,11 +1902,11 @@ function StatsTab({ T, history, tasks, goals, journal, achievements, user, setSt
                       const cx = (i / Math.max(wTonnage.length - 1, 1)) * w;
                       const cy = h - (d.tonnage / maxT) * (h - 10);
                       return (
-                        <g key={i}>
+                        <G key={i}>
                           <Circle cx={cx} cy={cy} r="3.5" fill={T.warn} stroke={T.card} strokeWidth="1.5" />
                           <SvgText x={cx} y={cy - 8} textAnchor="middle" fill={T.warn} fontSize="9" fontWeight="700">{d.tonnage}</SvgText>
                           <SvgText x={cx} y={h + 14} textAnchor="middle" fill={T.muted} fontSize="8">{d.week}</SvgText>
-                        </g>
+                        </G>
                       );
                     })}
                   </Svg>
@@ -1972,10 +1972,10 @@ function StatsTab({ T, history, tasks, goals, journal, achievements, user, setSt
                       const cx = (i / Math.max(sleepData.length - 1, 1)) * w;
                       const cy = h - (d.sleep / maxS) * (h - 10);
                       return (
-                        <g key={i}>
+                        <G key={i}>
                           <Circle cx={cx} cy={cy} r="3" fill={d.sleep >= 7 ? T.success : d.sleep >= 6 ? T.warn : T.danger} stroke={T.card} strokeWidth="1.5" />
                           {i % 5 === 0 && <SvgText x={cx} y={h + 14} textAnchor="middle" fill={T.muted} fontSize="8">{d.date}</SvgText>}
-                        </g>
+                        </G>
                       );
                     })}
                   </Svg>
