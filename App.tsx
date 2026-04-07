@@ -1544,6 +1544,7 @@ function parseInline(text: string, T: any) {
 
 /* ══════════ AI SETTINGS MODAL ══════════ */
 function AISettingsModal({ T, aiConfig, onSave, onClose }: any) {
+  const insets = useSafeAreaInsets();
   const cfg = aiConfig || {};
   const [provider, setProvider] = useState(cfg.provider || "claude");
   const [apiKey, setApiKey] = useState(cfg.apiKey || "");
@@ -1649,7 +1650,7 @@ function AISettingsModal({ T, aiConfig, onSave, onClose }: any) {
                 style={{ borderRadius: 9, borderColor: T.bord, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 13, padding: 10, minHeight: 60, marginTop: 6 }} />
             </View>
           </ScrollView>
-          <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: T.bord }}>
+          <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: T.bord, paddingBottom: 16 + insets.bottom }}>
             <View style={{ flexDirection: "row", gap: 8 }}>
               <Btn T={T} variant="muted" onPress={onClose} style={{ flex: 1 }}>Отмена</Btn>
               <Btn T={T} onPress={save} style={{ flex: 2 }}>Сохранить</Btn>
@@ -2221,6 +2222,7 @@ function ProfileTab({ T, state, setState }: any) {
 
 /* ══════════ PLAN EDITOR ══════════ */
 function PlanEditorModal({ T, customPlan, onSave, onClose }: any) {
+  const insets = useSafeAreaInsets();
   const [plan, setPlan] = useState(customPlan || JSON.parse(JSON.stringify(PLAN)));
   const [editDay, setEditDay] = useState<number | null>(null);
   const [editEx, setEditEx] = useState<number | null>(null);
@@ -2297,7 +2299,7 @@ function PlanEditorModal({ T, customPlan, onSave, onClose }: any) {
             ))}
           </ScrollView>
 
-          <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 12, paddingBottom: insets.bottom }}>
             <Btn T={T} variant="muted" onPress={onClose} style={{ flex: 1 }}>Отмена</Btn>
             <Btn T={T} onPress={save} style={{ flex: 2 }}>Сохранить план</Btn>
           </View>
