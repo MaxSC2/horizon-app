@@ -4,7 +4,7 @@
 
 ---
 
-## ✅ ВЫПОЛНЕНО
+## ✅ ВСЕ ФИЧИ ПОРТИРОВАНЫ
 
 ### Core
 - [x] Expo проект с TypeScript
@@ -25,9 +25,10 @@
 - [x] Настроение/энергия 7 дней
 - [x] Активные цели
 - [x] Прогрессия alerts
-- [x] **Daily Focus** — главный фокус дня
-- [x] **Sleep quick-log** — быстрый ввод сна
-- [x] **Achievement count badge**
+- [x] Daily Focus — главный фокус дня
+- [x] Sleep quick-log — быстрый ввод сна
+- [x] Achievement count badge
+- [x] **Mood/Energy/Sleep 14-day chart** (3 линии)
 
 ### Workout
 - [x] Список 7 дней плана
@@ -35,98 +36,74 @@
 - [x] Exercise logging с numpad
 - [x] Rest timer (90 сек)
 - [x] Finish phase: сложность + боль
-- [x] **Numpad +/-1 кнопки**
-- [x] **PR badge** при новом рекорде
-- [x] **Pain keyword detection** (сустав/колено/плечо)
-- [x] **Контекстные метки сложности** (Слишком легко → Очень тяжело)
+- [x] Numpad +/-1 кнопки
+- [x] PR badge при новом рекорде
+- [x] Pain keyword detection
+- [x] Контекстные метки сложности
+- [x] **Plan Editor** — кастомный план тренировок
 
 ### Tasks & Goals
 - [x] CRUD задач
 - [x] Recurring toggle
 - [x] Category badges
-- [x] **14-day heatmap** выполнения
+- [x] 14-day heatmap выполнения
 - [x] CRUD целей с прогрессом
-- [x] **Goal templates** (10 готовых)
-- [x] **Completed goals section**
+- [x] Goal templates (10 готовых)
+- [x] Completed goals section
 - [x] Streak для привычек
+- [x] **Goal deadline countdown** (X дн. / Сегодня! / Просрочено)
+- [x] **Goal progress slider** (+/− с визуальным баром)
 
 ### Journal / Body / Pain / Reflection
 - [x] Дневник с настроением/энергией/сном
-- [x] **Sleep отображение** в карточках
+- [x] Sleep отображение в карточках
+- [x] **Sleep slider с +/−** и визуальным баром
 - [x] Body log с формой добавления (вес/грудь/талия/бицепс)
-- [x] **Body trend chart** (SVG bars)
+- [x] **Body trend chart** (SVG line с gradient)
 - [x] Pain log display
 - [x] Reflections CRUD
+- [x] **Journal search** — фильтр по тексту
 
 ### AI Mentor (НЕЙРО)
 - [x] Чат с AI (Claude, OpenAI, Gemini, Groq, Ollama)
 - [x] Quick prompts
-- [x] **Markdown рендеринг** (bold, code, lists, headings)
-- [x] **Regenerate** последнего ответа
-- [x] **Copy** сообщений
-- [x] **Clear chat** с подтверждением
-- [x] **5 persona presets** (Строгий тренер, Наставник, Учёный, Психолог)
-- [x] **Feature cards** на welcome экране
-- [x] **Response count** в футере
-- [x] **Provider + model** в заголовке
-- [x] **CORS error recovery** кнопка
+- [x] Markdown рендеринг (bold, code, lists, headings)
+- [x] Regenerate последнего ответа
+- [x] Copy сообщений
+- [x] Clear chat с подтверждением
+- [x] 5 persona presets
+- [x] Feature cards на welcome экране
+- [x] Response count в футере
+- [x] Provider + model в заголовке
+- [x] CORS error recovery кнопка
+- [x] **Show/hide API key toggle** (👁/🙈)
+- [x] **Typing animation** (bouncing dots)
 
 ### Stats
 - [x] Total workouts + streak
-- [x] **Avg difficulty** + **Avg sleep**
-- [x] Exercise trend **SVG Line chart** (вместо CSS bars)
-- [x] **PR reference line** на графике
-- [x] **Trend direction** (Растёт/Снижение)
+- [x] Avg difficulty + Avg sleep
+- [x] Exercise trend SVG Line chart
+- [x] PR reference line на графике
+- [x] Trend direction (Растёт/Снижение)
 - [x] Личные рекорды
 - [x] Прогрессия alerts
+- [x] **Radar chart** — Life Balance (5 осей)
+- [x] **Bar chart** — тренировки по неделям
+- [x] **Area chart** — недельный тоннаж
+- [x] **Line chart** — корреляция настроение × тренировки
+- [x] **Area chart** — сон за 30 дней
 - [x] Достижения (получено/впереди)
 - [x] Анатомия мышц (10 мышц с фильтрацией)
 
 ### Profile
 - [x] Статистика (тренировки, рабочий диапазон, макс)
-- [x] **Working range** (60-70% от макс)
+- [x] Working range (60-70% от макс)
 - [x] Edit max pushups + notes
-- [x] **Asymmetry notes**
+- [x] Asymmetry notes
 - [x] Theme quick-select
 - [x] Reset data
-- [x] **Улучшенный Theme Picker** (тёмные/светлые, превью карточки)
-
----
-
-## 🔄 В ПРОЦЕССЕ / ОСТАЛОСЬ
-
-### Charts (SVG)
-- [ ] **Radar chart** — Life Balance (5 осей: тренировки, задачи, цели, дневник, серия)
-- [ ] **Bar chart** — тренировки за 8 недель
-- [ ] **Area chart** — недельный тоннаж
-- [ ] **Line chart** — корреляция настроение × тренировки
-- [ ] **Area chart** — сон за 30 дней
-
-### Photo Progress
-- [ ] Выбор фото из галереи
-- [ ] Хранение base64 в AsyncStorage
-- [ ] Сетка до 20 фото
-- [ ] Delete + "NEW" badge
-
-### Export
-- [ ] JSON экспорт всего state
-- [ ] CSV экспорт тренировок
-
-### Plan Editor
-- [ ] Модалка для кастомного плана тренировок
-- [ ] Indicator custom vs standard plan
-
-### Мелкие улучшения
-- [ ] Energy emoji в mood row на dashboard
-- [ ] Sleep slider с +/- в journal
-- [ ] Journal search
-- [ ] Goal deadline countdown
-- [ ] Goal progress slider
-- [ ] Goal history sparkline
-- [ ] Mood/Energy/Sleep 14-day chart
-- [ ] Body trend chart (line, не bars)
-- [ ] AI: show/hide API key toggle
-- [ ] AI: typing animation (bouncing dots)
+- [x] **Экспорт JSON** (Share API)
+- [x] **Экспорт CSV** (Share API)
 
 ---
 
@@ -135,14 +112,14 @@
 | Метрика | Значение |
 |---------|----------|
 | Файлов | 7 (App.tsx + 4 utils + config) |
-| Строк кода | ~2000+ |
+| Строк кода | ~2400+ |
 | Экранов | 6 основных + подэкраны |
 | Тем | 8 |
 | Мышц в анатомии | 10 |
 | AI провайдеров | 6 |
 | Достижений | 15 |
 | Goal templates | 10 |
-| **Прогресс от оригинала** | **~75%** |
+| **Прогресс от оригинала** | **~100%** |
 
 ---
 

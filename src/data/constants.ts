@@ -358,7 +358,7 @@ export const THEME_LIST = [
 export const DEFAULTS = {
   history: {}, tasks: [], goals: [], journal: [],
   bodyLog: [], reflections: [], achievements: [],
-  aiHistory: [], painLog: [],
+  aiHistory: [], painLog: [], photos: [],
   focus: { text: "", date: "" },
   customPlan: null, onboarded: false,
   user: { maxPushups: 27, note: "" },

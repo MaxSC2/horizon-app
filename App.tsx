@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
-  StatusBar, SafeAreaView, Modal, Alert, Dimensions, ActivityIndicator,
+  StatusBar, SafeAreaView, Modal, Alert, Dimensions, ActivityIndicator, Share,
 } from "react-native";
 import Svg, { Circle, Line, Path, Rect, Text as SvgText, Polygon, Defs, LinearGradient, Stop, Polyline } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -25,6 +25,34 @@ const W = Dimensions.get("window").width;
 const MAX_W = Math.min(W, 480);
 
 function getTheme(id: string) { return THEME_LIST.find((x) => x.id === id) || THEME_LIST[0]; }
+
+/* ══════════ EXPORT ══════════ */
+async function exportJSON(state: any) {
+  const data = JSON.stringify(state, null, 2);
+  try {
+    await Share.share({ message: data, title: "Горизонт — Экспорт JSON" });
+  } catch {}
+}
+
+async function exportCSV(history: Record<string, any>) {
+  const header = "Дата,День,Сложность,Боль,Упражнение,Подход,Значение,Выполнено\n";
+  const rows: string[] = [];
+  Object.entries(history).forEach(([date, log]: [string, any]) => {
+    if (!log.completed) return;
+    const dayName = PLAN[log.dayId - 1]?.day || "";
+    if (!log.exercises) return;
+    Object.entries(log.exercises).forEach(([exId, sets]: [string, any]) => {
+      const exName = PLAN.flatMap((p) => p.exercises || []).find((e) => e.id === exId)?.name || exId;
+      sets.forEach((s: any, si: number) => {
+        rows.push(`${date},${dayName},${log.difficulty || ""},"${(log.painNotes || "").replace(/"/g, '""')}",${exName},${si + 1},${s.value || ""},${s.done ? "Да" : "Нет"}`);
+      });
+    });
+  });
+  const csv = header + rows.join("\n");
+  try {
+    await Share.share({ message: csv, title: "Горизонт — Экспорт CSV" });
+  } catch {}
+}
 
 /* ══════════ PRIMITIVES ══════════ */
 function Lbl({ children, T }: { children: React.ReactNode; T: any }) {
@@ -571,6 +599,47 @@ function DashboardTab({ T, state, setState, onStartWorkout }: any) {
         </Card>
       )}
 
+      {/* 14-day Mood/Energy/Sleep chart */}
+      {journal.length >= 3 && (
+        <Card T={T}>
+          <Lbl T={T}>📈 Настроение / Энергия / Сон за 14 дней</Lbl>
+          {(() => {
+            const data14 = Array.from({ length: 14 }, (_, i) => {
+              const d = new Date();
+              d.setDate(d.getDate() - 13 + i);
+              const dd = fmt(d);
+              const entry = journal.filter((j: any) => j.date === dd).slice(-1)[0];
+              return {
+                date: d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" }),
+                mood: entry?.mood || 0,
+                energy: entry?.energy || 0,
+                sleep: entry?.sleep || 0,
+              };
+            }).filter((d) => d.mood || d.energy || d.sleep);
+            if (data14.length < 2) return null;
+            const w = 300; const h = 80;
+            const moodPts = data14.filter((d: any) => d.mood).map((d: any, i: number, arr: any[]) => `${(i / Math.max(arr.length - 1, 1)) * w},${h - ((d.mood - 1) / 4) * (h - 10)}`).join(" ");
+            const energyPts = data14.filter((d: any) => d.energy).map((d: any, i: number, arr: any[]) => `${(i / Math.max(arr.length - 1, 1)) * w},${h - ((d.energy - 1) / 4) * (h - 10)}`).join(" ");
+            const sleepPts = data14.filter((d: any) => d.sleep).map((d: any, i: number, arr: any[]) => `${(i / Math.max(arr.length - 1, 1)) * w},${h - ((d.sleep - 4) / 5) * (h - 10)}`).join(" ");
+            return (
+              <Svg height={h + 30} width="100%" viewBox={`0 0 ${w} ${h + 30}`}>
+                {moodPts && <Polyline points={moodPts} fill="none" stroke={T.primary} strokeWidth="2" strokeLinejoin="round" />}
+                {energyPts && <Polyline points={energyPts} fill="none" stroke={T.success} strokeWidth="2" strokeDasharray="4,3" strokeLinejoin="round" />}
+                {sleepPts && <Polyline points={sleepPts} fill="none" stroke={T.warn} strokeWidth="1.5" strokeDasharray="2,4" strokeLinejoin="round" />}
+                {data14.filter((d: any) => d.mood).map((d: any, i: number, arr: any[]) => {
+                  const cx = (i / Math.max(arr.length - 1, 1)) * w;
+                  const cy = h - ((d.mood - 1) / 4) * (h - 10);
+                  return <Circle key={i} cx={cx} cy={cy} r="3" fill={T.primary} />;
+                })}
+                <SvgText x="5" y="12" fill={T.primary} fontSize="8">— Настр.</SvgText>
+                <SvgText x="70" y="12" fill={T.success} fontSize="8">--- Энерг.</SvgText>
+                <SvgText x="150" y="12" fill={T.warn} fontSize="8">--- Сон</SvgText>
+              </Svg>
+            );
+          })()}
+        </Card>
+      )}
+
       {activeGoals.length > 0 && (
         <Card T={T}>
           <Lbl T={T}>🎯 Цели на горизонте</Lbl>
@@ -602,11 +671,20 @@ function DashboardTab({ T, state, setState, onStartWorkout }: any) {
 }
 
 /* ══════════ WORKOUT TAB ══════════ */
-function WorkoutTab({ T, session, setSession, onFinish, prs, history, onStart }: any) {
+function WorkoutTab({ T, session, setSession, onFinish, prs, history, onStart, onEditPlan, hasCustomPlan }: any) {
   if (!session) {
     return (
       <ScrollView style={{ padding: 14 }} contentContainerStyle={{ gap: 8 }}>
-        <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 24, color: T.txt, marginBottom: 14 }}>💪 Тренировка</Text>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 24, color: T.txt }}>💪 Тренировка</Text>
+          <Btn T={T} variant="muted" onPress={onEditPlan} style={{ minHeight: 36, paddingHorizontal: 12, fontSize: 12 }}>✏️ План</Btn>
+        </View>
+        {hasCustomPlan && (
+          <View style={{ padding: 8, backgroundColor: `${T.warn}10`, borderColor: `${T.warn}33`, borderWidth: 1, borderRadius: 8, marginBottom: 8, flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Text style={{ fontSize: 12 }}>⚡</Text>
+            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: T.warn }}>Кастомный план активен</Text>
+          </View>
+        )}
         {PLAN.map((plan, i) => {
           const log = history[fmt(weekDates()[i])]; const isToday = i === todayIdx();
           return (
@@ -909,8 +987,11 @@ function TasksGoalsTab({ T, tasks, setTasks, goals, setGoals }: any) {
             )}
             {goals.filter((g: any) => !g.completed).map((g: any) => {
               const pct = Math.round((g.currentValue / Math.max(g.targetValue, 1)) * 100);
+              const deadlineDays = g.deadline ? Math.ceil((new Date(g.deadline).getTime() - Date.now()) / 86400000) : null;
+              const isUrgent = deadlineDays !== null && deadlineDays <= 3;
+              const isToday = deadlineDays === 0;
               return (
-                <Card key={g.id} T={T} style={{ marginBottom: 10 }}>
+                <Card key={g.id} T={T} style={{ marginBottom: 10, borderColor: isUrgent ? `${T.danger}44` : undefined }}>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
                     <View>
                       <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 18, color: T.txt }}>{g.emoji} {g.title}</Text>
@@ -923,17 +1004,32 @@ function TasksGoalsTab({ T, tasks, setTasks, goals, setGoals }: any) {
                   </View>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                     <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 20, color: T.primary }}>{g.currentValue}<Text style={{ color: T.muted, fontSize: 13 }}>/{g.targetValue} {g.unit}</Text></Text>
-                    <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 22, color: pct >= 100 ? T.success : pct >= 50 ? T.warn : T.primary }}>{pct}%</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      {deadlineDays !== null && (
+                        <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: isToday ? T.danger : isUrgent ? T.warn : T.muted }}>
+                          {isToday ? "Сегодня!" : deadlineDays < 0 ? `Просрочено ${Math.abs(deadlineDays)} дн.` : `${deadlineDays} дн.`}
+                        </Text>
+                      )}
+                      <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 22, color: pct >= 100 ? T.success : pct >= 50 ? T.warn : T.primary }}>{pct}%</Text>
+                    </View>
                   </View>
                   <View style={{ height: 10, backgroundColor: T.lo, borderRadius: 5, marginBottom: 10 }}>
-                    <View style={{ height: "100%", width: `${Math.min(pct, 100)}%`, backgroundColor: T.primary, borderRadius: 5 }} />
+                    <View style={{ height: "100%", width: `${Math.min(pct, 100)}%`, backgroundColor: isUrgent ? T.danger : T.primary, borderRadius: 5 }} />
                   </View>
                   <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-                    <View style={{ flex: 1, height: 4, backgroundColor: T.lo, borderRadius: 2 }}>
-                      <View style={{ height: "100%", width: `${Math.min(pct, 100)}%`, backgroundColor: T.primary, borderRadius: 2 }} />
+                    <TouchableOpacity onPress={() => updateProgress(g.id, Math.max(0, g.currentValue - Math.max(1, Math.floor(g.targetValue * 0.05))))}
+                      style={{ width: 36, height: 36, borderRadius: 18, borderColor: T.bord, borderWidth: 1.5, backgroundColor: T.lo, justifyContent: "center", alignItems: "center" }}>
+                      <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 20, color: T.muted }}>−</Text>
+                    </TouchableOpacity>
+                    <View style={{ flex: 1, height: 32, borderRadius: 16, backgroundColor: T.lo, borderColor: T.bord, borderWidth: 1, overflow: "hidden" }}>
+                      <View style={{ height: "100%", width: `${Math.min(pct, 100)}%`, backgroundColor: isUrgent ? T.danger : T.primary, borderRadius: 16, justifyContent: "center", paddingHorizontal: 10 }}>
+                        <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 12, color: pct > 30 ? "#fff" : T.txt }}>{g.currentValue}/{g.targetValue}</Text>
+                      </View>
                     </View>
-                    <TextInput keyboardType="numeric" value={String(g.currentValue)} onChangeText={(t) => updateProgress(g.id, Number(t))}
-                      style={{ width: 60, height: 34, borderRadius: 8, borderColor: T.bord, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontWeight: "700", fontSize: 16, textAlign: "center" }} />
+                    <TouchableOpacity onPress={() => updateProgress(g.id, Math.min(g.targetValue, g.currentValue + Math.max(1, Math.floor(g.targetValue * 0.05))))}
+                      style={{ width: 36, height: 36, borderRadius: 18, borderColor: T.bord, borderWidth: 1.5, backgroundColor: T.lo, justifyContent: "center", alignItems: "center" }}>
+                      <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 20, color: T.muted }}>+</Text>
+                    </TouchableOpacity>
                   </View>
                 </Card>
               );
@@ -965,7 +1061,7 @@ function TasksGoalsTab({ T, tasks, setTasks, goals, setGoals }: any) {
 }
 
 /* ══════════ JOURNAL TAB ══════════ */
-function JournalBodyTab({ T, journal, setJournal, bodyLog, setBodyLog, reflections, setReflections, painLog, setPainLog }: any) {
+function JournalBodyTab({ T, journal, setJournal, bodyLog, setBodyLog, reflections, setReflections, painLog, setPainLog, photos, setPhotos }: any) {
   const [sub, setSub] = useState("journal");
   const [adding, setAdding] = useState(false);
   const [jText, setJText] = useState("");
@@ -974,6 +1070,7 @@ function JournalBodyTab({ T, journal, setJournal, bodyLog, setBodyLog, reflectio
   const [jSleep, setJSleep] = useState(7);
   const [addBody, setAddBody] = useState(false);
   const [bodyForm, setBodyForm] = useState({ weight: "", chest: "", waist: "", arms: "" });
+  const [searchQuery, setSearchQuery] = useState("");
 
   const saveJournal = () => {
     if (!jText.trim()) return;
@@ -1034,7 +1131,20 @@ function JournalBodyTab({ T, journal, setJournal, bodyLog, setBodyLog, reflectio
                     <Lbl T={T}>Сон</Lbl>
                     <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: jSleep >= 7 ? T.primary : jSleep >= 6 ? T.warn : T.danger }}>{jSleep}ч — {sleepLabel(jSleep)}</Text>
                   </View>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 4 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginTop: 4 }}>
+                    <TouchableOpacity onPress={() => setJSleep(Math.max(3, jSleep - 1))}
+                      style={{ width: 40, height: 40, borderRadius: 20, borderColor: T.bord, borderWidth: 1.5, backgroundColor: T.lo, justifyContent: "center", alignItems: "center" }}>
+                      <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 22, color: T.muted }}>−</Text>
+                    </TouchableOpacity>
+                    <View style={{ flex: 1, height: 8, backgroundColor: T.lo, borderRadius: 4 }}>
+                      <View style={{ height: "100%", width: `${((jSleep - 3) / 7) * 100}%`, backgroundColor: jSleep >= 7 ? T.primary : jSleep >= 6 ? T.warn : T.danger, borderRadius: 4 }} />
+                    </View>
+                    <TouchableOpacity onPress={() => setJSleep(Math.min(10, jSleep + 1))}
+                      style={{ width: 40, height: 40, borderRadius: 20, borderColor: T.bord, borderWidth: 1.5, backgroundColor: T.lo, justifyContent: "center", alignItems: "center" }}>
+                      <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 22, color: T.muted }}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 8 }}>
                     {[4, 5, 6, 7, 8, 9].map((h) => (
                       <TouchableOpacity key={h} onPress={() => setJSleep(h)}
                         style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 7, borderColor: jSleep === h ? T.primary : T.bord, borderWidth: 1, backgroundColor: jSleep === h ? `${T.primary}15` : T.lo }}>
@@ -1052,7 +1162,15 @@ function JournalBodyTab({ T, journal, setJournal, bodyLog, setBodyLog, reflectio
               </Card>
             )}
             {journal.length === 0 && !adding && <View style={{ alignItems: "center", paddingVertical: 36 }}><Text style={{ fontSize: 36, marginBottom: 10 }}>📝</Text><Text style={{ fontFamily: "System", fontSize: 14, color: T.muted }}>Начни вести дневник</Text></View>}
-            {journal.map((entry: any) => {
+            {journal.length > 0 && (
+              <View style={{ marginBottom: 10 }}>
+                <TextInput value={searchQuery} onChangeText={setSearchQuery} placeholder="🔍 Поиск по записям…" placeholderTextColor={T.muted}
+                  style={{ width: "100%", height: 40, borderRadius: 10, borderColor: T.bord, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 14, paddingHorizontal: 12 }} />
+              </View>
+            )}
+            {journal
+              .filter((entry: any) => !searchQuery || entry.text?.toLowerCase().includes(searchQuery.toLowerCase()))
+              .map((entry: any) => {
               const m = MOODS.find((x) => x.v === entry.mood); const en = ENERGY.find((x) => x.v === entry.energy);
               return (
                 <Card key={entry.id} T={T} style={{ marginBottom: 10, borderLeftWidth: 3, borderLeftColor: (m?.v ?? 3) >= 4 ? T.success : (m?.v ?? 3) <= 2 ? T.danger : T.muted }}>
@@ -1102,20 +1220,40 @@ function JournalBodyTab({ T, journal, setJournal, bodyLog, setBodyLog, reflectio
             )}
             {bodyLog.length > 1 && (
               <Card T={T} style={{ marginBottom: 12 }}>
-                <Lbl T={T}>Динамика</Lbl>
-                <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 3, height: 100, marginTop: 8 }}>
-                  {bodyLog.slice(0, 14).reverse().map((entry: any, i: number) => {
-                    const maxW = Math.max(...bodyLog.map((e: any) => parseFloat(e.weight) || 0), 1);
-                    const h = entry.weight ? (parseFloat(entry.weight) / maxW) * 80 : 0;
-                    return (
-                      <View key={entry.id} style={{ flex: 1, alignItems: "center" }}>
-                        {entry.weight && <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 9, color: T.primary, marginBottom: 2 }}>{entry.weight}</Text>}
-                        <View style={{ width: "100%", height: h, backgroundColor: T.primary, borderRadius: 3, opacity: 0.7 }} />
-                        <Text style={{ fontFamily: "System", fontSize: 7, color: T.muted, marginTop: 2 }}>{entry.date.slice(5)}</Text>
-                      </View>
-                    );
-                  })}
-                </View>
+                <Lbl T={T}>Динамика веса</Lbl>
+                {(() => {
+                  const weightData = bodyLog.filter((e: any) => e.weight).slice(0, 14).reverse();
+                  if (weightData.length < 2) return <Text style={{ fontFamily: "System", fontSize: 13, color: T.muted, textAlign: "center", paddingVertical: 12 }}>Нужно минимум 2 замера</Text>;
+                  const w = 300; const h = 80;
+                  const maxW = Math.max(...weightData.map((e: any) => parseFloat(e.weight) || 0), 1);
+                  const minW = Math.min(...weightData.map((e: any) => parseFloat(e.weight) || 0));
+                  const range = Math.max(maxW - minW, 1);
+                  const pts = weightData.map((d: any, i: number) => `${(i / Math.max(weightData.length - 1, 1)) * w},${h - ((parseFloat(d.weight) - minW) / range) * (h - 15) - 5}`).join(" ");
+                  const areaPts = `0,${h} ${pts} ${w},${h}`;
+                  return (
+                    <Svg height={h + 25} width="100%" viewBox={`0 0 ${w} ${h + 25}`}>
+                      <Defs>
+                        <LinearGradient id="bodyGrad" x1="0" y1="0" x2="0" y2="1">
+                          <Stop offset="0" stopColor={T.primary} stopOpacity="0.2" />
+                          <Stop offset="1" stopColor={T.primary} stopOpacity="0" />
+                        </LinearGradient>
+                      </Defs>
+                      <Polygon points={areaPts} fill="url(#bodyGrad)" />
+                      <Polyline points={pts} fill="none" stroke={T.primary} strokeWidth="2.5" strokeLinejoin="round" />
+                      {weightData.map((d: any, i: number) => {
+                        const cx = (i / Math.max(weightData.length - 1, 1)) * w;
+                        const cy = h - ((parseFloat(d.weight) - minW) / range) * (h - 15) - 5;
+                        return (
+                          <g key={i}>
+                            <Circle cx={cx} cy={cy} r="4" fill={T.primary} stroke={T.card} strokeWidth="2" />
+                            <SvgText x={cx} y={cy - 8} textAnchor="middle" fill={T.primary} fontSize="9" fontWeight="700">{d.weight}</SvgText>
+                            <SvgText x={cx} y={h + 14} textAnchor="middle" fill={T.muted} fontSize="8">{d.date.slice(5)}</SvgText>
+                          </g>
+                        );
+                      })}
+                    </Svg>
+                  );
+                })()}
               </Card>
             )}
             {bodyLog.length === 0 && !addBody && <View style={{ alignItems: "center", paddingVertical: 40 }}><Text style={{ fontSize: 40, marginBottom: 10 }}>⚖️</Text><Text style={{ fontFamily: "System", fontSize: 14, color: T.muted }}>Начни отслеживать тело</Text></View>}
@@ -1186,7 +1324,14 @@ function MentorTab({ T, state, setState }: any) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [bouncePhase, setBouncePhase] = useState(0);
   const scrollRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (!loading) return;
+    const ref = setInterval(() => setBouncePhase((p) => p + 1), 150);
+    return () => clearInterval(ref);
+  }, [loading]);
 
   useEffect(() => { scrollRef.current?.scrollToEnd({ animated: true }); }, [messages, loading]);
 
@@ -1338,7 +1483,20 @@ function MentorTab({ T, state, setState }: any) {
             </View>
           );
         })}
-        {loading && <View style={{ flexDirection: "row", gap: 5, padding: 12, backgroundColor: T.card, borderRadius: 18, alignSelf: "flex-start", borderColor: T.bord, borderWidth: 1 }}><ActivityIndicator color={provColor} /><Text style={{ fontFamily: "System", fontSize: 13, color: T.muted }}>Думаю…</Text></View>}
+        {loading && (
+          <View style={{ flexDirection: "row", gap: 6, padding: 14, backgroundColor: T.card, borderRadius: 18, alignSelf: "flex-start", borderColor: T.bord, borderWidth: 1, alignItems: "center" }}>
+            {[0, 1, 2].map((i) => {
+              const phase = (bouncePhase + i) % 3;
+              const size = phase === 0 ? 6 : phase === 1 ? 10 : 8;
+              return (
+                <View key={i} style={{
+                  width: size, height: size, borderRadius: size / 2, backgroundColor: provColor,
+                }} />
+              );
+            })}
+            <Text style={{ fontFamily: "System", fontSize: 13, color: T.muted, marginLeft: 4 }}>Думаю…</Text>
+          </View>
+        )}
         {error && (
           <View style={{ padding: 12, backgroundColor: `${T.danger}12`, borderColor: `${T.danger}44`, borderWidth: 1, borderRadius: 14 }}>
             <Text style={{ fontFamily: "System", fontSize: 13, color: T.danger }}>{error}</Text>
@@ -1389,6 +1547,7 @@ function AISettingsModal({ T, aiConfig, onSave, onClose }: any) {
   const cfg = aiConfig || {};
   const [provider, setProvider] = useState(cfg.provider || "claude");
   const [apiKey, setApiKey] = useState(cfg.apiKey || "");
+  const [showKey, setShowKey] = useState(false);
   const [model, setModel] = useState(cfg.model || "");
   const [systemExtra, setSystemExtra] = useState(cfg.systemExtra || "");
   const [persona, setPersona] = useState(cfg.persona || "");
@@ -1437,9 +1596,14 @@ function AISettingsModal({ T, aiConfig, onSave, onClose }: any) {
           </View>
           {prov.needsKey && (
             <View style={{ marginBottom: 14 }}>
-              <Lbl T={T}>API Ключ</Lbl>
-              <TextInput value={apiKey} onChangeText={setApiKey} placeholder={prov.keyPrefix ? `${prov.keyPrefix}…` : "Твой API ключ"} placeholderTextColor={T.muted} secureTextEntry
-                style={{ height: 42, borderRadius: 9, borderColor: apiKey ? `${T.success}88` : T.bord, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 14, paddingHorizontal: 12, marginTop: 6 }} />
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <Lbl T={T}>API Ключ</Lbl>
+                <TouchableOpacity onPress={() => setShowKey(!showKey)} style={{ padding: 4 }}>
+                  <Text style={{ fontFamily: "System", fontSize: 14, color: T.muted }}>{showKey ? "🙈" : "👁"}</Text>
+                </TouchableOpacity>
+              </View>
+              <TextInput value={apiKey} onChangeText={setApiKey} placeholder={prov.keyPrefix ? `${prov.keyPrefix}…` : "Твой API ключ"} placeholderTextColor={T.muted} secureTextEntry={!showKey}
+                style={{ height: 42, borderRadius: 9, borderColor: apiKey ? `${T.success}88` : T.bord, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 14, paddingHorizontal: 12 }} />
             </View>
           )}
           {prov.models.length > 0 && (
@@ -2026,7 +2190,8 @@ function ProfileTab({ T, state, setState }: any) {
           <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted, marginTop: 6 }}>{THEME_LIST.find((x) => x.id === (state.themeId || "cosmos"))?.icon} {THEME_LIST.find((x) => x.id === (state.themeId || "cosmos"))?.name}</Text>
         </View>
         <View style={{ flexDirection: "column", gap: 8, marginTop: 14 }}>
-          <Btn T={T} variant="muted" onPress={() => Alert.alert("Экспорт", "Функция экспорта будет добавлена позже")} style={{ width: "100%" }}>📥 Экспорт JSON</Btn>
+          <Btn T={T} variant="muted" onPress={() => exportJSON(state)} style={{ width: "100%" }}>📥 Экспорт JSON</Btn>
+          <Btn T={T} variant="muted" onPress={() => exportCSV(state.history)} style={{ width: "100%" }}>📊 Экспорт CSV</Btn>
           <Btn T={T} variant="danger" onPress={() => setShowReset(true)} style={{ width: "100%", fontSize: 13 }}>🗑 Сбросить данные</Btn>
         </View>
       </Card>
@@ -2050,6 +2215,94 @@ function ProfileTab({ T, state, setState }: any) {
   );
 }
 
+/* ══════════ PLAN EDITOR ══════════ */
+function PlanEditorModal({ T, customPlan, onSave, onClose }: any) {
+  const [plan, setPlan] = useState(customPlan || JSON.parse(JSON.stringify(PLAN)));
+  const [editDay, setEditDay] = useState<number | null>(null);
+  const [editEx, setEditEx] = useState<number | null>(null);
+
+  const save = () => { onSave(plan); onClose(); };
+  const updateDay = (di: number, patch: any) => setPlan((p: any) => p.map((d: any, i: number) => i === di ? { ...d, ...patch } : d));
+  const updateExercise = (di: number, ei: number, patch: any) => setPlan((p: any) => {
+    const ex = [...p[di].exercises];
+    ex[ei] = { ...ex[ei], ...patch };
+    return p.map((d: any, i: number) => i === di ? { ...d, exercises: ex } : d);
+  });
+  const addExercise = (di: number) => setPlan((p: any) => {
+    const ex = [...(p[di].exercises || []), { id: `custom_${Date.now()}`, name: "Новое упражнение", type: "reps", sets: 3, reps: "10", hi: 10 }];
+    return p.map((d: any, i: number) => i === di ? { ...d, exercises: ex } : d);
+  });
+  const removeExercise = (di: number, ei: number) => setPlan((p: any) => {
+    const ex = p[di].exercises.filter((_: any, i: number) => i !== ei);
+    return p.map((d: any, i: number) => i === di ? { ...d, exercises: ex } : d);
+  });
+
+  return (
+    <Modal transparent animationType="slide" visible>
+      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,.85)", justifyContent: "flex-end" }}>
+        <View style={{ backgroundColor: T.surf, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 16, maxHeight: "90%" }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 12 }}>
+            <View>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 18, color: T.txt }}>✏️ Редактор плана</Text>
+              <Text style={{ fontFamily: "System", fontSize: 11, color: T.muted, marginTop: 2 }}>Кастомный план тренировок</Text>
+            </View>
+            <TouchableOpacity onPress={onClose}><Text style={{ fontSize: 20, color: T.muted }}>✕</Text></TouchableOpacity>
+          </View>
+
+          <ScrollView style={{ maxHeight: "75%" }}>
+            {plan.map((day: any, di: number) => (
+              <Card key={di} T={T} style={{ marginBottom: 8, borderColor: editDay === di ? `${T.primary}55` : undefined }}>
+                <TouchableOpacity onPress={() => setEditDay(editDay === di ? null : di)} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Text style={{ fontSize: 20 }}>{day.emoji}</Text>
+                    <View>
+                      <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 15, color: T.txt }}>{day.day} — {day.name}</Text>
+                      <Text style={{ fontFamily: "System", fontSize: 11, color: T.muted }}>{day.type === "rest" ? "Отдых" : `${(day.exercises || []).length} упр.`}</Text>
+                    </View>
+                  </View>
+                  <Text style={{ fontSize: 14, color: T.muted }}>{editDay === di ? "▲" : "▼"}</Text>
+                </TouchableOpacity>
+
+                {editDay === di && day.type !== "rest" && (
+                  <View style={{ marginTop: 10 }}>
+                    <TextInput value={day.name} onChangeText={(t) => updateDay(di, { name: t })}
+                      style={{ height: 36, borderRadius: 8, borderColor: T.bord, borderWidth: 1, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 14, paddingHorizontal: 10, marginBottom: 8 }} />
+                    {(day.exercises || []).map((ex: any, ei: number) => (
+                      <View key={ei} style={{ padding: 8, backgroundColor: T.lo, borderRadius: 8, marginBottom: 6 }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                          <TextInput value={ex.name} onChangeText={(t) => updateExercise(di, ei, { name: t })}
+                            style={{ flex: 1, height: 32, borderRadius: 6, borderColor: T.bord, borderWidth: 1, backgroundColor: T.card, color: T.txt, fontFamily: "System", fontSize: 13, paddingHorizontal: 8, marginRight: 6 }} />
+                          <TouchableOpacity onPress={() => removeExercise(di, ei)}><Text style={{ fontSize: 16, color: T.danger }}>×</Text></TouchableOpacity>
+                        </View>
+                        <View style={{ flexDirection: "row", gap: 6 }}>
+                          <TextInput keyboardType="numeric" value={String(ex.sets)} onChangeText={(t) => updateExercise(di, ei, { sets: Number(t) || 1 })}
+                            style={{ width: 50, height: 30, borderRadius: 6, borderColor: T.bord, borderWidth: 1, backgroundColor: T.card, color: T.txt, fontFamily: "System", fontSize: 13, textAlign: "center" }} />
+                          <TextInput value={ex.reps} onChangeText={(t) => updateExercise(di, ei, { reps: t })}
+                            style={{ width: 70, height: 30, borderRadius: 6, borderColor: T.bord, borderWidth: 1, backgroundColor: T.card, color: T.txt, fontFamily: "System", fontSize: 13, textAlign: "center" }} />
+                          <TouchableOpacity onPress={() => updateExercise(di, ei, { type: ex.type === "reps" ? "seconds" : "reps" })}
+                            style={{ paddingHorizontal: 8, height: 30, borderRadius: 6, borderColor: T.bord, borderWidth: 1, backgroundColor: T.card, justifyContent: "center" }}>
+                            <Text style={{ fontFamily: "System", fontSize: 11, color: T.muted }}>{ex.type === "reps" ? "повт" : "сек"}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                    <Btn T={T} variant="ghost" onPress={() => addExercise(di)} style={{ width: "100%", minHeight: 36, fontSize: 13 }}>+ Добавить упражнение</Btn>
+                  </View>
+                )}
+              </Card>
+            ))}
+          </ScrollView>
+
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+            <Btn T={T} variant="muted" onPress={onClose} style={{ flex: 1 }}>Отмена</Btn>
+            <Btn T={T} onPress={save} style={{ flex: 2 }}>Сохранить план</Btn>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 /* ══════════ APP ROOT ══════════ */
 export default function App() {
   const insets = useSafeAreaInsets();
@@ -2059,6 +2312,7 @@ export default function App() {
   const [session, setSession] = useState<any>(null);
   const [toast, setToast] = useState<any>(null);
   const [showThemes, setShowThemes] = useState(false);
+  const [showPlanEditor, setShowPlanEditor] = useState(false);
 
   useEffect(() => {
     loadState().then((s) => { setState_(s); setLoaded(true); });
@@ -2143,11 +2397,12 @@ export default function App() {
         </View>
       )}
       {showThemes && <ThemePicker T={T} currentThemeId={themeId} onSelect={(id: string) => setState((s: any) => ({ ...s, themeId: id }))} onClose={() => setShowThemes(false)} />}
+      {showPlanEditor && <PlanEditorModal T={T} customPlan={state.customPlan} onSave={(plan: any) => setState((s: any) => ({ ...s, customPlan: plan }))} onClose={() => setShowPlanEditor(false)} />}
       <View style={{ flex: 1, maxWidth: MAX_W, alignSelf: "center", width: "100%", paddingTop: insets.top, paddingBottom: insets.bottom }}>
         <Header T={T} streak={state.streak || 0} onOpenThemes={() => setShowThemes(true)} />
         <View style={{ flex: 1 }}>
           {tab === "dashboard" && <DashboardTab T={T} state={state} setState={setState} onStartWorkout={startWorkout} />}
-          {tab === "workout" && <WorkoutTab T={T} session={session} setSession={setSession} onFinish={finishWorkout} prs={prs} history={state.history} onStart={startWorkout} />}
+          {tab === "workout" && <WorkoutTab T={T} session={session} setSession={setSession} onFinish={finishWorkout} prs={prs} history={state.history} onStart={startWorkout} onEditPlan={() => setShowPlanEditor(true)} hasCustomPlan={!!state.customPlan} />}
           {tab === "tasks" && <TasksGoalsTab T={T} tasks={state.tasks || []} setTasks={setTasks} goals={state.goals || []} setGoals={setGoals} />}
           {tab === "journal" && <JournalBodyTab T={T} journal={state.journal || []} setJournal={setJournal} bodyLog={state.bodyLog || []} setBodyLog={setBodyLog} reflections={state.reflections || []} setReflections={setReflections} painLog={state.painLog || []} setPainLog={setPainLog} />}
           {tab === "ai" && <MentorTab T={T} state={state} setState={setState} />}
