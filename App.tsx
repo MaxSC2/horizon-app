@@ -1509,10 +1509,10 @@ function MentorTab({ T, state, setState }: any) {
           </View>
         )}
       </ScrollView>
-      <View style={{ padding: 10, borderTopWidth: 1, borderTopColor: T.bord, backgroundColor: T.surf }}>
+      <View style={{ padding: 10, borderTopWidth: 1, borderTopColor: T.bord, backgroundColor: T.surf, paddingBottom: 14 }}>
         <View style={{ flexDirection: "row", gap: 8, alignItems: "flex-end" }}>
           <TextInput value={input} onChangeText={setInput} placeholder="Напиши что угодно…" placeholderTextColor={T.muted} multiline
-            style={{ flex: 1, borderRadius: 14, borderColor: input ? `${provColor}88` : T.bord, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 14, padding: 11, maxHeight: 130 }} />
+            style={{ flex: 1, borderRadius: 14, borderColor: input ? `${provColor}88` : T.bord, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 14, padding: 11, maxHeight: 100, minHeight: 44 }} />
           <TouchableOpacity onPress={() => send()} disabled={!input.trim() || loading}
             style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: input.trim() && !loading ? provColor : T.lo, justifyContent: "center", alignItems: "center" }}>
             <Text style={{ fontSize: 22, color: input.trim() && !loading ? "#000" : T.muted }}>→</Text>
@@ -1574,82 +1574,86 @@ function AISettingsModal({ T, aiConfig, onSave, onClose }: any) {
   return (
     <Modal transparent animationType="slide" visible>
       <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,.88)", justifyContent: "flex-end" }}>
-        <View style={{ backgroundColor: T.surf, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 20, maxHeight: "90%" }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 16 }}>
+        <View style={{ backgroundColor: T.surf, borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: "90%" }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", padding: 20, paddingBottom: 12 }}>
             <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 18, color: T.txt }}>Настройки НЕЙРО</Text>
             <TouchableOpacity onPress={onClose}><Text style={{ fontSize: 20, color: T.muted }}>✕</Text></TouchableOpacity>
           </View>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 7, marginBottom: 16 }}>
-            {AI_PROVIDERS.map((p) => {
-              const active = provider === p.id;
-              return (
-                <TouchableOpacity key={p.id} onPress={() => { setProvider(p.id); setModel(""); }}
-                  style={{ padding: 10, borderRadius: 12, borderColor: active ? p.color : T.bord, borderWidth: active ? 2 : 1.5, backgroundColor: active ? `${p.color}12` : T.card, alignItems: "center", minWidth: 80 }}>
-                  <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: `${p.color}20`, justifyContent: "center", alignItems: "center", marginBottom: 4 }}>
-                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: p.color }} />
-                  </View>
-                  <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 12, color: active ? p.color : T.txt }}>{p.short}</Text>
-                  {p.badge && <Text style={{ fontFamily: "System", fontSize: 8, color: p.color, marginTop: 2 }}>{p.badge}</Text>}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          {prov.needsKey && (
-            <View style={{ marginBottom: 14 }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <Lbl T={T}>API Ключ</Lbl>
-                <TouchableOpacity onPress={() => setShowKey(!showKey)} style={{ padding: 4 }}>
-                  <Text style={{ fontFamily: "System", fontSize: 14, color: T.muted }}>{showKey ? "🙈" : "👁"}</Text>
-                </TouchableOpacity>
-              </View>
-              <TextInput value={apiKey} onChangeText={setApiKey} placeholder={prov.keyPrefix ? `${prov.keyPrefix}…` : "Твой API ключ"} placeholderTextColor={T.muted} secureTextEntry={!showKey}
-                style={{ height: 42, borderRadius: 9, borderColor: apiKey ? `${T.success}88` : T.bord, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 14, paddingHorizontal: 12 }} />
+          <ScrollView style={{ maxHeight: "85%", paddingHorizontal: 20 }}>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 7, marginBottom: 16 }}>
+              {AI_PROVIDERS.map((p) => {
+                const active = provider === p.id;
+                return (
+                  <TouchableOpacity key={p.id} onPress={() => { setProvider(p.id); setModel(""); }}
+                    style={{ padding: 10, borderRadius: 12, borderColor: active ? p.color : T.bord, borderWidth: active ? 2 : 1.5, backgroundColor: active ? `${p.color}12` : T.card, alignItems: "center", minWidth: 80 }}>
+                    <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: `${p.color}20`, justifyContent: "center", alignItems: "center", marginBottom: 4 }}>
+                      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: p.color }} />
+                    </View>
+                    <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 12, color: active ? p.color : T.txt }}>{p.short}</Text>
+                    {p.badge && <Text style={{ fontFamily: "System", fontSize: 8, color: p.color, marginTop: 2 }}>{p.badge}</Text>}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
-          )}
-          {prov.models.length > 0 && (
+            {prov.needsKey && (
+              <View style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <Lbl T={T}>API Ключ</Lbl>
+                  <TouchableOpacity onPress={() => setShowKey(!showKey)} style={{ padding: 4 }}>
+                    <Text style={{ fontFamily: "System", fontSize: 14, color: T.muted }}>{showKey ? "🙈" : "👁"}</Text>
+                  </TouchableOpacity>
+                </View>
+                <TextInput value={apiKey} onChangeText={setApiKey} placeholder={prov.keyPrefix ? `${prov.keyPrefix}…` : "Твой API ключ"} placeholderTextColor={T.muted} secureTextEntry={!showKey}
+                  style={{ height: 42, borderRadius: 9, borderColor: apiKey ? `${T.success}88` : T.bord, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 14, paddingHorizontal: 12 }} />
+              </View>
+            )}
+            {prov.models.length > 0 && (
+              <View style={{ marginBottom: 14 }}>
+                <Lbl T={T}>Модель</Lbl>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                  {prov.models.map((m) => {
+                    const cur = (model || prov.defaultModel) === m;
+                    return (
+                      <TouchableOpacity key={m} onPress={() => setModel(m)}
+                        style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderColor: cur ? prov.color : T.bord, borderWidth: 1.5, backgroundColor: cur ? `${prov.color}10` : T.lo }}>
+                        <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: cur ? prov.color : T.txt }}>{m}</Text>
+                        {m === prov.defaultModel && <Text style={{ fontFamily: "System", fontSize: 8, color: T.muted }}>по умолч.</Text>}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
+            {/* Persona presets */}
             <View style={{ marginBottom: 14 }}>
-              <Lbl T={T}>Модель</Lbl>
+              <Lbl T={T}>Персонаж</Lbl>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
-                {prov.models.map((m) => {
-                  const cur = (model || prov.defaultModel) === m;
+                {PERSONAS.map((p) => {
+                  const cur = persona === p.id;
                   return (
-                    <TouchableOpacity key={m} onPress={() => setModel(m)}
-                      style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderColor: cur ? prov.color : T.bord, borderWidth: 1.5, backgroundColor: cur ? `${prov.color}10` : T.lo }}>
-                      <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: cur ? prov.color : T.txt }}>{m}</Text>
-                      {m === prov.defaultModel && <Text style={{ fontFamily: "System", fontSize: 8, color: T.muted }}>по умолч.</Text>}
+                    <TouchableOpacity key={p.id} onPress={() => setPersona(p.id)}
+                      style={{ flex: 1, minWidth: "45%", padding: 10, borderRadius: 10, borderColor: cur ? T.primary : T.bord, borderWidth: 1.5, backgroundColor: cur ? `${T.primary}10` : T.lo }}>
+                      <Text style={{ fontSize: 16, marginBottom: 2 }}>{p.emoji}</Text>
+                      <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: cur ? T.primary : T.txt }}>{p.name}</Text>
+                      <Text style={{ fontFamily: "System", fontSize: 10, color: T.muted, marginTop: 2 }}>{p.desc}</Text>
                     </TouchableOpacity>
                   );
                 })}
               </View>
             </View>
-          )}
 
-          {/* Persona presets */}
-          <View style={{ marginBottom: 14 }}>
-            <Lbl T={T}>Персонаж</Lbl>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
-              {PERSONAS.map((p) => {
-                const cur = persona === p.id;
-                return (
-                  <TouchableOpacity key={p.id} onPress={() => setPersona(p.id)}
-                    style={{ flex: 1, minWidth: "45%", padding: 10, borderRadius: 10, borderColor: cur ? T.primary : T.bord, borderWidth: 1.5, backgroundColor: cur ? `${T.primary}10` : T.lo }}>
-                    <Text style={{ fontSize: 16, marginBottom: 2 }}>{p.emoji}</Text>
-                    <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: cur ? T.primary : T.txt }}>{p.name}</Text>
-                    <Text style={{ fontFamily: "System", fontSize: 10, color: T.muted, marginTop: 2 }}>{p.desc}</Text>
-                  </TouchableOpacity>
-                );
-              })}
+            <View style={{ marginBottom: 14 }}>
+              <Lbl T={T}>Доп. инструкции</Lbl>
+              <TextInput value={systemExtra} onChangeText={setSystemExtra} placeholder="Напр.: отвечай только по-русски" placeholderTextColor={T.muted} multiline
+                style={{ borderRadius: 9, borderColor: T.bord, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 13, padding: 10, minHeight: 60, marginTop: 6 }} />
             </View>
-          </View>
-
-          <View style={{ marginBottom: 14 }}>
-            <Lbl T={T}>Доп. инструкции</Lbl>
-            <TextInput value={systemExtra} onChangeText={setSystemExtra} placeholder="Напр.: отвечай только по-русски" placeholderTextColor={T.muted} multiline
-              style={{ borderRadius: 9, borderColor: T.bord, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 13, padding: 10, minHeight: 60, marginTop: 6 }} />
-          </View>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <Btn T={T} variant="muted" onPress={onClose} style={{ flex: 1 }}>Отмена</Btn>
-            <Btn T={T} onPress={save} style={{ flex: 2 }}>Сохранить</Btn>
+          </ScrollView>
+          <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: T.bord }}>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <Btn T={T} variant="muted" onPress={onClose} style={{ flex: 1 }}>Отмена</Btn>
+              <Btn T={T} onPress={save} style={{ flex: 2 }}>Сохранить</Btn>
+            </View>
           </View>
         </View>
       </View>
