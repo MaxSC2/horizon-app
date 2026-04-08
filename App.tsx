@@ -870,37 +870,154 @@ function DashboardTab({ T, state, setState, onStartWorkout }: any) {
 }
 
 /* ══════════ WORKOUT TAB ══════════ */
-function WorkoutTab({ T, session, setSession, onFinish, prs, history, onStart, onEditPlan, hasCustomPlan }: any) {
+function WorkoutTab({ T, session, setSession, onFinish, prs, history, onStart, onEditPlan, onEditHistory, hasCustomPlan }: any) {
+  const [showHist, setShowHist] = useState(false);
+  const [histSearch, setHistSearch] = useState("");
+  const [editEntry, setEditEntry] = useState<{ date: string; log: any } | null>(null);
+
+  const histEntries = Object.entries(history)
+    .filter(([, l]) => (l as any).completed)
+    .sort(([a], [b]) => (a > b ? -1 : 1));
+
+  const filteredHist = histSearch
+    ? histEntries.filter(([date, l]) => {
+        const p = PLAN.find((x) => x.id === (l as any).dayId);
+        return date.includes(histSearch) || p?.name.toLowerCase().includes(histSearch.toLowerCase());
+      })
+    : histEntries.slice(0, 20);
+
   if (!session) {
     return (
       <ScrollView style={{ padding: 14 }} contentContainerStyle={{ gap: 8 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 24, color: T.txt }}>💪 Тренировка</Text>
-          <Btn T={T} variant="muted" onPress={onEditPlan} style={{ minHeight: 36, paddingHorizontal: 12, fontSize: 12 }}>✏️ План</Btn>
+          <TouchableOpacity onPress={() => setShowHist(!showHist)} style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9, borderColor: T.bord, borderWidth: 1, backgroundColor: showHist ? `${T.primary}15` : T.lo }}>
+            <Text style={{ fontSize: 12 }}>🕐</Text>
+            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: showHist ? T.primary : T.muted }}>{showHist ? "К плану" : "История"}</Text>
+          </TouchableOpacity>
         </View>
-        {hasCustomPlan && (
-          <View style={{ padding: 8, backgroundColor: `${T.warn}10`, borderColor: `${T.warn}33`, borderWidth: 1, borderRadius: 8, marginBottom: 8, flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Text style={{ fontSize: 12 }}>⚡</Text>
-            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: T.warn }}>Кастомный план активен</Text>
-          </View>
-        )}
-        {PLAN.map((plan, i) => {
-          const log = history[fmt(weekDates()[i])]; const isToday = i === todayIdx();
-          return (
-            <Card key={i} T={T} style={{ marginBottom: 8, borderColor: isToday ? `${T.primary}55` : undefined, opacity: plan.type === "rest" ? 0.6 : 1 }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <Text style={{ fontSize: 24 }}>{plan.emoji}</Text>
-                  <View>
-                    <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 16, color: isToday ? T.primary : T.txt }}>{plan.day} — {plan.name}</Text>
-                    <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted }}>{plan.type === "rest" ? "Отдых" : `${plan.exercises?.length || 0} упр.`}</Text>
-                  </View>
-                </View>
-                {log?.completed ? <Badge color={T.success} T={T}>✓</Badge> : plan.type !== "rest" ? <Btn T={T} onPress={() => onStart(i)} style={{ minHeight: 34, paddingHorizontal: 12, fontSize: 13 }} variant={isToday ? "primary" : "muted"}>▶</Btn> : <Badge color={T.muted} T={T}>~</Badge>}
+
+        {showHist ? (
+          <>
+            <TextInput value={histSearch} onChangeText={setHistSearch} placeholder="Поиск по дате (2025-01) или названию…"
+              style={{ height: 40, borderRadius: 10, borderColor: T.bord, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 14, paddingHorizontal: 14, marginBottom: 12 }} />
+            {filteredHist.length === 0 && (
+              <View style={{ alignItems: "center", paddingVertical: 36 }}>
+                <Text style={{ fontSize: 32, opacity: 0.4 }}>🕐</Text>
+                <Text style={{ fontFamily: "System", fontSize: 14, color: T.muted, marginTop: 8 }}>{histSearch ? "Ничего не найдено" : "История пуста"}</Text>
               </View>
-            </Card>
-          );
-        })}
+            )}
+            {filteredHist.map(([date, log]: [string, any]) => {
+              const plan = PLAN.find((p) => p.id === log.dayId) || { name: "Тренировка", emoji: "💪" };
+              const dateObj = new Date(date + "T12:00:00");
+              const exCount = Object.keys(log.exercises || {}).length;
+              const totalReps = Object.values(log.exercises || {}).flat().reduce((s: number, x: any) => s + (parseInt(x.value) || 0), 0);
+              return (
+                <Card key={date} T={T} style={{ marginBottom: 8 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+                      <Text style={{ fontSize: 22 }}>{plan.emoji}</Text>
+                      <View>
+                        <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 15, color: T.txt }}>{plan.name}</Text>
+                        <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted }}>
+                          {dateObj.toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })}
+                        </Text>
+                        <View style={{ flexDirection: "row", gap: 6, marginTop: 4 }}>
+                          <Badge color={T.primary} T={T}>{exCount} упр.</Badge>
+                          {totalReps > 0 && <Badge color={T.success} T={T}>{totalReps} повт</Badge>}
+                          {log.difficulty && <Badge color={log.difficulty >= 8 ? T.danger : log.difficulty >= 5 ? T.warn : T.muted} T={T}>💪 {log.difficulty}/10</Badge>}
+                        </View>
+                      </View>
+                    </View>
+                    <TouchableOpacity onPress={() => setEditEntry({ date, log })} style={{ padding: 6 }}>
+                      <Text style={{ fontSize: 16 }}>✏️</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {log.painNotes && (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 8, padding: 6, backgroundColor: `${T.danger}10`, borderRadius: 6 }}>
+                      <Text style={{ fontSize: 12 }}>⚠️</Text>
+                      <Text style={{ fontFamily: "System", fontSize: 11, color: T.danger }} numberOfLines={1}>{log.painNotes}</Text>
+                    </View>
+                  )}
+                </Card>
+              );
+            })}
+          </>
+        ) : (
+          <>
+            {hasCustomPlan && (
+              <View style={{ padding: 8, backgroundColor: `${T.warn}10`, borderColor: `${T.warn}33`, borderWidth: 1, borderRadius: 8, marginBottom: 8, flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Text style={{ fontSize: 12 }}>⚡</Text>
+                <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: T.warn }}>Кастомный план активен</Text>
+              </View>
+            )}
+            {Object.keys(history).length > 0 && (() => {
+              const recovery = getMuscleRecovery(history);
+              const groups = [
+                { id: "upper", label: "Верх тела", icon: "💪", threshold: 48 },
+                { id: "lower", label: "Ноги", icon: "🦵", threshold: 48 },
+                { id: "core", label: "Кор", icon: "⚡", threshold: 24 },
+              ];
+              const getStatus = (days: number | null, threshold: number) => {
+                if (days === null) return { label: "Не трениров.", color: "#3D5A72", bar: 0 };
+                const hrs = days * 24;
+                if (hrs >= threshold * 2) return { label: "Полностью", color: "#00E676", bar: 100 };
+                if (hrs >= threshold) return { label: "Восстановлен", color: "#4ADE80", bar: 80 };
+                if (hrs >= threshold * 0.5) return { label: "Восстан.", color: "#FFD600", bar: 50 };
+                return { label: "Нужен отдых", color: "#FF4455", bar: 20 };
+              };
+              return (
+                <Card T={T} style={{ marginBottom: 8 }}>
+                  <Lbl T={T}>💪 Восстановление мышц</Lbl>
+                  {groups.map((g) => {
+                    const days = recovery[g.id];
+                    const st = getStatus(days, g.threshold);
+                    return (
+                      <View key={g.id} style={{ marginTop: 8 }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+                            <Text style={{ fontSize: 15 }}>{g.icon}</Text>
+                            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 14, color: T.txt }}>{g.label}</Text>
+                            {days !== null && <Text style={{ fontFamily: "System", fontSize: 11, color: T.muted }}>{days === 0 ? "сегодня" : `${days} дн. назад`}</Text>}
+                          </View>
+                          <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: st.color }}>{st.label}</Text>
+                        </View>
+                        <View style={{ height: 5, backgroundColor: T.lo, borderRadius: 3, overflow: "hidden" }}>
+                          <View style={{ height: "100%", width: `${st.bar}%`, backgroundColor: st.color, borderRadius: 3 }} />
+                        </View>
+                      </View>
+                    );
+                  })}
+                </Card>
+              );
+            })()}
+            {PLAN.map((plan, i) => {
+              const log = history[fmt(weekDates()[i])]; const isToday = i === todayIdx();
+              return (
+                <Card key={i} T={T} style={{ marginBottom: 8, borderColor: isToday ? `${T.primary}55` : undefined, opacity: plan.type === "rest" ? 0.6 : 1 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                      <Text style={{ fontSize: 24 }}>{plan.emoji}</Text>
+                      <View>
+                        <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 16, color: isToday ? T.primary : T.txt }}>{plan.day} — {plan.name}</Text>
+                        <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted }}>{plan.type === "rest" ? "Отдых" : `${plan.exercises?.length || 0} упр.`}</Text>
+                      </View>
+                    </View>
+                    {log?.completed ? (
+                      <View style={{ flexDirection: "row", gap: 6 }}>
+                        <TouchableOpacity onPress={() => setEditEntry({ date: fmt(weekDates()[i]), log })} style={{ padding: 4 }}>
+                          <Text style={{ fontSize: 14 }}>✏️</Text>
+                        </TouchableOpacity>
+                        <Badge color={T.success} T={T}>✓</Badge>
+                      </View>
+                    ) : plan.type !== "rest" ? <Btn T={T} onPress={() => onStart(i)} style={{ minHeight: 34, paddingHorizontal: 12, fontSize: 13 }} variant={isToday ? "primary" : "muted"}>▶</Btn> : <Badge color={T.muted} T={T}>~</Badge>}
+                  </View>
+                </Card>
+              );
+            })}
+          </>
+        )}
+        {editEntry && <EditWorkoutModal T={T} date={editEntry.date} log={editEntry.log} onSave={onEditHistory} onClose={() => setEditEntry(null)} />}
       </ScrollView>
     );
   }
@@ -2668,6 +2785,126 @@ function PlanEditorModal({ T, customPlan, onSave, onClose }: any) {
   );
 }
 
+/* ══════════ EDIT WORKOUT MODAL ══════════ */
+function EditWorkoutModal({ T, date, log, onSave, onClose }: any) {
+  const insets = useSafeAreaInsets();
+  const plan = PLAN.find((p) => p.id === log.dayId) || { name: "Тренировка", exercises: [] };
+  const [difficulty, setDifficulty] = useState(log.difficulty || 5);
+  const [painNotes, setPainNotes] = useState(log.painNotes || "");
+  const [exerciseLogs, setExerciseLogs] = useState<Record<string, any>>(log.exercises || {});
+  const [showNumpad, setShowNumpad] = useState<{ exId: string; si: number } | null>(null);
+  const [numpadValue, setNumpadValue] = useState("");
+
+  const handleNumpad = (key: string) => {
+    if (key === "⌫") { setNumpadValue((v) => v.slice(0, -1)); return; }
+    if (key === "✓") {
+      const { exId, si } = showNumpad!;
+      setExerciseLogs((prev: Record<string, any>) => {
+        const ex = { ...prev[exId] };
+        ex[si] = { ...ex[si], value: numpadValue || "0" };
+        return { ...prev, [exId]: ex };
+      });
+      setShowNumpad(null); setNumpadValue("");
+      return;
+    }
+    setNumpadValue((v) => v.length < 4 ? v + key : v);
+  };
+
+  const handleSave = () => {
+    onSave({ ...log, difficulty, painNotes, exercises: exerciseLogs });
+    onClose();
+  };
+
+  const dateObj = new Date(date + "T12:00:00");
+  const dateLabel = dateObj.toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" });
+
+  return (
+    <Modal transparent animationType="slide" visible>
+      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,.85)", justifyContent: "flex-end" }}>
+        <View style={{ backgroundColor: T.surf, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 16, maxHeight: "90%" }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 12 }}>
+            <View>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 18, color: T.txt }}>✏️ Редактировать</Text>
+              <Text style={{ fontFamily: "System", fontSize: 11, color: T.muted, marginTop: 2 }}>{dateLabel} · {plan.name}</Text>
+            </View>
+            <TouchableOpacity onPress={onClose}><Text style={{ fontSize: 20, color: T.muted }}>✕</Text></TouchableOpacity>
+          </View>
+
+          <ScrollView style={{ maxHeight: "70%" }} showsVerticalScrollIndicator={false}>
+            <Card T={T} style={{ marginBottom: 12 }}>
+              <Lbl T={T}>Сложность</Lbl>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
+                {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                  <TouchableOpacity key={n} onPress={() => setDifficulty(n)}
+                    style={{ width: 38, height: 38, borderRadius: 8, borderColor: difficulty === n ? T.primary : T.bord, borderWidth: 2, backgroundColor: difficulty === n ? `${T.primary}22` : T.lo, justifyContent: "center", alignItems: "center" }}>
+                    <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 15, color: difficulty === n ? T.primary : T.muted }}>{n}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </Card>
+
+            <Card T={T} style={{ marginBottom: 12 }}>
+              <Lbl T={T}>Болевые ощущения</Lbl>
+              <TextInput value={painNotes} onChangeText={setPainNotes} placeholder="Опиши, если что-то беспокоило…"
+                style={{ width: "100%", borderRadius: 8, borderColor: T.bord, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 14, padding: 10, minHeight: 70, marginTop: 8 }} multiline />
+            </Card>
+
+            <Card T={T} style={{ marginBottom: 12 }}>
+              <Lbl T={T}>Результаты</Lbl>
+              {(plan.exercises || []).map((ex: any) => {
+                const logs = exerciseLogs[ex.id] || [];
+                if (!logs.length) return null;
+                return (
+                  <View key={ex.id} style={{ marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: T.bord }}>
+                    <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 14, color: T.txt, marginBottom: 8 }}>{ex.name}</Text>
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                      {logs.map((s: any, si: number) => (
+                        <TouchableOpacity key={si} onPress={() => { setShowNumpad({ exId: ex.id, si }); setNumpadValue(String(s.value || "")); }}
+                          style={{ minWidth: 60, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderColor: s.done ? T.success : T.bord, borderWidth: 1.5, backgroundColor: s.done ? `${T.success}15` : T.lo, justifyContent: "center", alignItems: "center" }}>
+                          <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 15, color: s.done ? T.success : T.muted }}>{s.value || "-"}</Text>
+                          <Text style={{ fontFamily: "System", fontSize: 10, color: T.muted }}>{ex.type === "seconds" ? "сек" : "повт"}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                );
+              })}
+            </Card>
+          </ScrollView>
+
+          {showNumpad && (
+            <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: T.surf, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 16 + insets.bottom }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 12 }}>
+                <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted }}>Введи значение</Text>
+                <TouchableOpacity onPress={() => { setShowNumpad(null); setNumpadValue(""); }}><Text style={{ color: T.muted }}>Отмена</Text></TouchableOpacity>
+              </View>
+              <View style={{ backgroundColor: T.lo, borderRadius: 12, padding: 12, marginBottom: 12 }}>
+                <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 40, color: T.txt, textAlign: "center" }}>{numpadValue || "0"}</Text>
+                <Text style={{ fontFamily: "System", fontSize: 14, color: T.muted, textAlign: "center" }}>{showNumpad && plan.exercises.find((e: any) => e.id === showNumpad.exId)?.type === "seconds" ? "секунд" : "повторений"}</Text>
+              </View>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
+                {["1","2","3","4","5","6","7","8","9","⌫","0","✓"].map((key) => (
+                  <TouchableOpacity key={key} onPress={() => handleNumpad(key)}
+                    style={{ width: "30%", aspectRatio: 2, borderRadius: 10, justifyContent: "center", alignItems: "center",
+                      backgroundColor: key === "✓" ? T.primary : key === "⌫" ? `${T.danger}20` : T.card,
+                      borderColor: key === "✓" ? T.primary : T.bord, borderWidth: 1 }}>
+                    <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 22, color: key === "✓" ? "#000" : key === "⌫" ? T.danger : T.txt }}>{key}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 12, paddingBottom: insets.bottom }}>
+            <Btn T={T} variant="muted" onPress={onClose} style={{ flex: 1 }}>Отмена</Btn>
+            <Btn T={T} variant="success" onPress={handleSave} style={{ flex: 2 }}>Сохранить</Btn>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 /* ══════════ HEAT MAP ══════════ */
 function HeatMap({ T, history }: any) {
   const data = getHeatMapData(history, 12);
@@ -3054,7 +3291,7 @@ export default function App() {
         <Header T={T} streak={state.streak || 0} onOpenThemes={() => setShowThemes(true)} />
         <View style={{ flex: 1 }}>
           {tab === "dashboard" && <DashboardTab T={T} state={state} setState={setState} onStartWorkout={startWorkout} />}
-          {tab === "workout" && <WorkoutTab T={T} session={session} setSession={setSession} onFinish={finishWorkout} prs={prs} history={state.history} onStart={startWorkout} onEditPlan={() => setShowPlanEditor(true)} hasCustomPlan={!!state.customPlan} />}
+          {tab === "workout" && <WorkoutTab T={T} session={session} setSession={setSession} onFinish={finishWorkout} prs={prs} history={state.history} onStart={startWorkout} onEditPlan={() => setShowPlanEditor(true)} onEditHistory={(date: string, log: any) => setState((s: any) => ({ ...s, history: { ...s.history, [date]: log } }))} hasCustomPlan={!!state.customPlan} />}
           {tab === "nutrition" && <NutritionTab T={T} state={state} setState={setState} />}
           {tab === "tasks" && <TasksGoalsTab T={T} tasks={state.tasks || []} setTasks={setTasks} goals={state.goals || []} setGoals={setGoals} />}
           {tab === "journal" && <JournalBodyTab T={T} journal={state.journal || []} setJournal={setJournal} bodyLog={state.bodyLog || []} setBodyLog={setBodyLog} reflections={state.reflections || []} setReflections={setReflections} painLog={state.painLog || []} setPainLog={setPainLog} />}
