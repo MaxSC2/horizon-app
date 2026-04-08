@@ -21,7 +21,9 @@
     "react-native-svg": "15.12.1"
   },
   "devDependencies": {
+    "@babel/core": "^7.24.0",
     "@types/react": "~19.1.0",
+    "babel-preset-expo": "~13.0.0",
     "eas-cli": "^18.5.0",
     "typescript": "~5.9.2"
   },
