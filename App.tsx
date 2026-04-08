@@ -342,34 +342,36 @@ function ThemePicker({ T, currentThemeId, currentStyleId, onSelect, onStyleSelec
             <TouchableOpacity onPress={onClose}><Text style={{ fontSize: 20, color: T.muted }}>✕</Text></TouchableOpacity>
           </View>
 
-          {/* Style selection - grid */}
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
-            <Text style={{ fontSize: 14, color: T.primary }}>{'>'}</Text>
-            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: T.muted, letterSpacing: 1, textTransform: "uppercase" }}>Стиль интерфейса</Text>
-          </View>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-            {STYLE_LIST.map(renderStyleCard)}
-          </View>
+          <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
+            {/* Style selection - grid */}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
+              <Text style={{ fontSize: 14, color: T.primary }}>{'>'}</Text>
+              <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: T.muted, letterSpacing: 1, textTransform: "uppercase" }}>Стиль интерфейса</Text>
+            </View>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+              {STYLE_LIST.map(renderStyleCard)}
+            </View>
 
-          {/* Dark themes */}
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
-            <Text style={{ fontSize: 14 }}>{'◐'}</Text>
-            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: T.muted, letterSpacing: 1, textTransform: "uppercase" }}>Тёмные</Text>
-          </View>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
-            {darkThemes.map(renderThemeCard)}
-          </View>
+            {/* Dark themes */}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
+              <Text style={{ fontSize: 14 }}>{'◐'}</Text>
+              <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: T.muted, letterSpacing: 1, textTransform: "uppercase" }}>Тёмные</Text>
+            </View>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+              {darkThemes.map(renderThemeCard)}
+            </View>
 
-          {/* Light themes */}
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
-            <Text style={{ fontSize: 14 }}>{'○'}</Text>
-            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: T.muted, letterSpacing: 1, textTransform: "uppercase" }}>Светлые</Text>
-          </View>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-            {lightThemes.map(renderThemeCard)}
-          </View>
+            {/* Light themes */}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
+              <Text style={{ fontSize: 14 }}>{'○'}</Text>
+              <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: T.muted, letterSpacing: 1, textTransform: "uppercase" }}>Светлые</Text>
+            </View>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
+              {lightThemes.map(renderThemeCard)}
+            </View>
+          </ScrollView>
 
-          <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted, textAlign: "center", marginTop: 12 }}>
+          <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted, textAlign: "center", marginTop: 10 }}>
             {current?.icon} {current?.name} + {currentStyle?.icon} {currentStyle?.name}
           </Text>
         </View>
@@ -577,7 +579,7 @@ function DashboardTab({ T, state, setState, onStartWorkout }: any) {
   const achievements = state.achievements || [];
 
   return (
-    <ScrollView style={{ flex: 1, padding: 14 }} contentContainerStyle={{ gap: 12, paddingBottom: 100 }}>
+    <ScrollView style={{ flex: 1, padding: 14 }} contentContainerStyle={{ gap: 12, paddingBottom: 33 }}>
       <Card T={T} style={{ borderColor: `${T.primary}22`, backgroundColor: `${T.primary}10` }}>
         <Text style={{ fontFamily: "System", fontSize: 14, color: T.txt, fontStyle: "italic", lineHeight: 20 }}>«{quote.text}»</Text>
         <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 11, color: T.primary, marginTop: 6 }}>— {quote.author.toUpperCase()}</Text>
@@ -732,9 +734,13 @@ function DashboardTab({ T, state, setState, onStartWorkout }: any) {
                     <TouchableOpacity key={m.v} onPress={() => {
                       setState((s: any) => {
                         const j = [...s.journal];
-                        const idx = j.findIndex((x: any) => x.date === TODAY);
-                        if (idx >= 0) j[idx] = { ...j[idx], mood: m.v };
-                        else j.unshift({ id: uid(), date: TODAY, text: "", mood: m.v, energy: todayJournal?.energy ?? 3, createdAt: new Date().toISOString() });
+                        const existing = j.find((x: any) => x.date === TODAY);
+                        if (existing) {
+                          const idx = j.indexOf(existing);
+                          j[idx] = { ...existing, mood: m.v };
+                        } else {
+                          j.unshift({ id: uid(), date: TODAY, text: "", mood: m.v, energy: 3, createdAt: new Date().toISOString() });
+                        }
                         return { ...s, journal: j };
                       });
                     }}
@@ -754,9 +760,13 @@ function DashboardTab({ T, state, setState, onStartWorkout }: any) {
                     <TouchableOpacity key={e.v} onPress={() => {
                       setState((s: any) => {
                         const j = [...s.journal];
-                        const idx = j.findIndex((x: any) => x.date === TODAY);
-                        if (idx >= 0) j[idx] = { ...j[idx], energy: e.v };
-                        else j.unshift({ id: uid(), date: TODAY, text: "", mood: todayJournal?.mood ?? 3, energy: e.v, createdAt: new Date().toISOString() });
+                        const existing = j.find((x: any) => x.date === TODAY);
+                        if (existing) {
+                          const idx = j.indexOf(existing);
+                          j[idx] = { ...existing, energy: e.v };
+                        } else {
+                          j.unshift({ id: uid(), date: TODAY, text: "", mood: 3, energy: e.v, createdAt: new Date().toISOString() });
+                        }
                         return { ...s, journal: j };
                       });
                     }}
@@ -904,7 +914,7 @@ function WorkoutTab({ T, session, setSession, onFinish, prs, history, onStart, o
   const totalSets = Object.values(session.exerciseLogs).flat().length;
 
   return (
-    <ScrollView style={{ padding: 14 }} contentContainerStyle={{ gap: 10, paddingBottom: 100 }}>
+    <ScrollView style={{ padding: 14 }} contentContainerStyle={{ gap: 10, paddingBottom: 33 }}>
       {session.showRest && <RestTimer T={T} onDone={() => upd({ showRest: false })} />}
       {session.phase === "warmup" && (
         <>
@@ -1031,7 +1041,7 @@ function TasksGoalsTab({ T, tasks, setTasks, goals, setGoals }: any) {
           </TouchableOpacity>
         ))}
       </View>
-      <ScrollView style={{ flex: 1, padding: 14 }} contentContainerStyle={{ paddingBottom: 100 }}>
+      <ScrollView style={{ flex: 1, padding: 14 }} contentContainerStyle={{ paddingBottom: 33 }}>
         {sub === "tasks" && (
           <>
             <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 14 }}>
@@ -1310,7 +1320,7 @@ function JournalBodyTab({ T, journal, setJournal, bodyLog, setBodyLog, reflectio
           </TouchableOpacity>
         ))}
       </View>
-      <ScrollView style={{ flex: 1, padding: 14 }} contentContainerStyle={{ paddingBottom: 100 }}>
+      <ScrollView style={{ flex: 1, padding: 14 }} contentContainerStyle={{ paddingBottom: 33 }}>
         {sub === "journal" && (
           <>
             <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 12 }}>
@@ -2000,7 +2010,7 @@ function StatsTab({ T, history, tasks, goals, journal, achievements, user, setSt
           </TouchableOpacity>
         ))}
       </View>
-      <ScrollView style={{ flex: 1, padding: 14 }} contentContainerStyle={{ paddingBottom: 100 }}>
+      <ScrollView style={{ flex: 1, padding: 14 }} contentContainerStyle={{ paddingBottom: 33 }}>
         {sub === "stats" && (
           <>
             <View style={{ flexDirection: "row", gap: 7, marginBottom: 14 }}>
@@ -2470,7 +2480,7 @@ function ProfileTab({ T, state, setState }: any) {
   const save = () => { setState((s: any) => ({ ...s, user: { ...s.user, maxPushups: parseInt(mp) || 27, note, asymmetryNote: asymNote } })); setEditing(false); };
 
   return (
-    <ScrollView style={{ flex: 1, padding: 14 }} contentContainerStyle={{ gap: 12, paddingBottom: 100 }}>
+    <ScrollView style={{ flex: 1, padding: 14 }} contentContainerStyle={{ gap: 12, paddingBottom: 33 }}>
       <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 24, color: T.txt, marginBottom: 14 }}>⚙️ Профиль</Text>
       <Card T={T} style={{ backgroundColor: `${T.primary}08`, borderColor: `${T.primary}33` }}>
         <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
@@ -2796,7 +2806,7 @@ function NutritionTab({ T, state, setState }: any) {
   const maxCal = Math.max(...last7.map(d => d.cal), MACRO_GOALS.calories);
 
   return (
-    <ScrollView style={{ flex: 1, padding: 14 }} contentContainerStyle={{ gap: 12, paddingBottom: 100 }}>
+    <ScrollView style={{ flex: 1, padding: 14 }} contentContainerStyle={{ gap: 12, paddingBottom: 33 }}>
       <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 24, color: T.txt }}>🥗 Питание</Text>
 
       {/* Macro rings */}
