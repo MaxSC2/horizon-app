@@ -2258,6 +2258,42 @@ const StatsTab = React.memo(function StatsTab({ T, history, tasks, goals, journa
   const maxCount = useMemo(() => Math.max(...wStats.map((w: any) => w.count), 1), [wStats]);
   const maxT = useMemo(() => Math.max(...wTonnage.map((w: any) => w.tonnage), 1), [wTonnage]);
 
+  const trendChart = useMemo(() => {
+    if (trend.length <= 1) return null;
+    const max = Math.max(...trend.map((t: any) => t.val), 1);
+    const w = 300; const h = 100;
+    const pts = trend.map((d: any, i: number) => `${(i / Math.max(trend.length - 1, 1)) * w},${h - (d.val / max) * (h - 10)}`).join(" ");
+    const areaPts = `0,${h} ${pts} ${w},${h}`;
+    const last3 = trend.slice(-3);
+    const goingUp = last3.length >= 2 && last3[last3.length - 1].val >= last3[0].val;
+    return { max, w, h, pts, areaPts, last3, goingUp, prVal: prs[selEx] || 0 };
+  }, [trend, selEx, prs]);
+
+  const moodChart = useMemo(() => {
+    if (corr.length < 2) return null;
+    const w = 300; const h = 80;
+    const moodPts = corr.filter((d: any) => d.mood).map((d: any, i, arr) => `${(i / Math.max(arr.length - 1, 1)) * w},${h - ((d.mood - 1) / 4) * (h - 15)}`).join(" ");
+    const energyPts = corr.filter((d: any) => d.energy).map((d: any, i, arr) => `${(i / Math.max(arr.length - 1, 1)) * w},${h - ((d.energy - 1) / 4) * (h - 15)}`).join(" ");
+    return { w, h, moodPts, energyPts };
+  }, [corr]);
+
+  const sleepChart = useMemo(() => {
+    const sleepData = Array.from({ length: 30 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - 29 + i);
+      const dd = fmt(d);
+      const entry = journal.filter((j: any) => j.date === dd).slice(-1)[0];
+      return { date: d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" }), sleep: entry?.sleep || 0 };
+    }).filter((d) => d.sleep > 0);
+    if (sleepData.length < 2) return null;
+    const w = 300; const h = 80;
+    const maxS = 10;
+    const pts = sleepData.map((d: any, i: number) => `${(i / Math.max(sleepData.length - 1, 1)) * w},${h - (d.sleep / maxS) * (h - 10)}`).join(" ");
+    const areaPts = `0,${h} ${pts} ${w},${h}`;
+    const refY = h - (7 / maxS) * (h - 10);
+    return { w, h, pts, areaPts, refY, maxS, sleepData };
+  }, [journal]);
+
   return (
     <View style={{ flex: 1 }}>
       <View style={{ flexDirection: "row", borderBottomWidth: 1, borderBottomColor: T.bord, backgroundColor: T.surf }}>
@@ -2303,15 +2339,7 @@ const StatsTab = React.memo(function StatsTab({ T, history, tasks, goals, journa
                   );
                 })}
               </View>
-              {trend.length > 1 ? (() => {
-                  const max = Math.max(...trend.map((t: any) => t.val), 1);
-                  const w = 300; const h = 100;
-                  const prVal = prs[selEx] || 0;
-                  const pts = trend.map((d: any, i: number) => `${(i / Math.max(trend.length - 1, 1)) * w},${h - (d.val / max) * (h - 10)}`).join(" ");
-                  const areaPts = `0,${h} ${pts} ${w},${h}`;
-                  const last3 = trend.slice(-3);
-                  const goingUp = last3.length >= 2 && last3[last3.length - 1].val >= last3[0].val;
-                  return (
+              {trendChart ? (
                     <View style={{ marginTop: 4 }}>
                       {trendSelIdx !== null && (
                         <View style={{ backgroundColor: T.lo, borderRadius: 8, padding: 8, marginBottom: 8, flexDirection: "row", justifyContent: "space-between" }}>
@@ -2326,19 +2354,19 @@ const StatsTab = React.memo(function StatsTab({ T, history, tasks, goals, journa
                             <Stop offset="1" stopColor={T.success} stopOpacity="0" />
                           </LinearGradient>
                         </Defs>
-                        <Polygon points={areaPts} fill="url(#grad)" />
-                        {prVal > 0 && (
-                          <Line x1="0" y1={h - (prVal / max) * (h - 10)} x2={w} y2={h - (prVal / max) * (h - 10)} stroke={T.warn} strokeWidth="1.5" strokeDasharray="6,4" />
+                        <Polygon points={trendChart.areaPts} fill="url(#grad)" />
+                        {trendChart.prVal > 0 && (
+                          <Line x1="0" y1={trendChart.h - (trendChart.prVal / trendChart.max) * (trendChart.h - 10)} x2={trendChart.w} y2={trendChart.h - (trendChart.prVal / trendChart.max) * (trendChart.h - 10)} stroke={T.warn} strokeWidth="1.5" strokeDasharray="6,4" />
                         )}
-                        <Polyline points={pts} fill="none" stroke={T.success} strokeWidth="2.5" strokeLinejoin="round" />
+                        <Polyline points={trendChart.pts} fill="none" stroke={T.success} strokeWidth="2.5" strokeLinejoin="round" />
                         {trend.map((d: any, i: number) => {
-                          const cx = (i / Math.max(trend.length - 1, 1)) * w;
-                          const cy = h - (d.val / max) * (h - 10);
+                          const cx = (i / Math.max(trend.length - 1, 1)) * trendChart.w;
+                          const cy = trendChart.h - (d.val / trendChart.max) * (trendChart.h - 10);
                           const isSel = trendSelIdx === i;
                           return (
                             <G key={i}>
                               <Circle cx={cx} cy={cy} r={isSel ? 7 : 4} fill={isSel ? T.success : T.surf} stroke={T.success} strokeWidth={isSel ? 3 : 2} />
-                              <SvgText x={cx} y={h + 12} textAnchor="middle" fill={isSel ? T.success : T.muted} fontSize="8" fontWeight={isSel ? "700" : "400"}>{d.date}</SvgText>
+                              <SvgText x={cx} y={trendChart.h + 12} textAnchor="middle" fill={isSel ? T.success : T.muted} fontSize="8" fontWeight={isSel ? "700" : "400"}>{d.date}</SvgText>
                               <Rect x={cx - 18} y={cy - 20} width={36} height={16} fill={T.success} rx={4} onPress={() => setTrendSelIdx(isSel ? null : i)} />
                               <SvgText x={cx} y={cy - 8} textAnchor="middle" fill="#000" fontSize="10" fontWeight="700" onPress={() => setTrendSelIdx(isSel ? null : i)}>{d.val}</SvgText>
                             </G>
@@ -2346,16 +2374,15 @@ const StatsTab = React.memo(function StatsTab({ T, history, tasks, goals, journa
                         })}
                       </Svg>
                       <Text style={{ fontFamily: "System", fontSize: 11, color: T.muted, textAlign: "center", marginTop: 4 }}>Тапни на точку для деталей</Text>
-                      {last3.length >= 2 && (
-                        <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: goingUp ? T.success : T.danger, textAlign: "center", marginTop: 4 }}>
-                          {goingUp ? "📈 Растёт!" : "📉 Снижение"}
+                      {trendChart.last3.length >= 2 && (
+                        <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: trendChart.goingUp ? T.success : T.danger, textAlign: "center", marginTop: 4 }}>
+                          {trendChart.goingUp ? "📈 Растёт!" : "📉 Снижение"}
                         </Text>
                       )}
                     </View>
-                  );
-                })() : (
-                <Text style={{ fontFamily: "System", fontSize: 13, color: T.muted, textAlign: "center", paddingVertical: 20 }}>Нужно минимум 2 записи</Text>
-              )}
+                  ) : (
+                    <Text style={{ fontFamily: "System", fontSize: 13, color: T.muted, textAlign: "center", paddingVertical: 20 }}>Нужно минимум 2 записи</Text>
+                  )}
             </Card>
             {Object.keys(prs).length > 0 && (
               <Card T={T} style={{ marginBottom: 14 }}>
@@ -2484,13 +2511,7 @@ const StatsTab = React.memo(function StatsTab({ T, history, tasks, goals, journa
             })()}
 
             {/* Mood x Workout Correlation */}
-            {(() => {
-              const corr = moodWorkoutCorrelation(history, journal);
-              if (corr.length < 2) return null;
-              const w = 300; const h = 80;
-              const moodPts = corr.filter((d: any) => d.mood).map((d: any, i, arr) => `${(i / Math.max(arr.length - 1, 1)) * w},${h - ((d.mood - 1) / 4) * (h - 15)}`).join(" ");
-              const energyPts = corr.filter((d: any) => d.energy).map((d: any, i, arr) => `${(i / Math.max(arr.length - 1, 1)) * w},${h - ((d.energy - 1) / 4) * (h - 15)}`).join(" ");
-              return (
+            {moodChart && (
                 <Card T={T} style={{ marginBottom: 14 }}>
                   <Lbl T={T}>📉 Настроение и энергия</Lbl>
                   <View style={{ flexDirection: "row", gap: 16, marginBottom: 8 }}>
@@ -2503,67 +2524,51 @@ const StatsTab = React.memo(function StatsTab({ T, history, tasks, goals, journa
                       <Text style={{ fontFamily: "System", fontSize: 11, color: T.muted }}>Энергия</Text>
                     </View>
                   </View>
-                  <Svg height={h + 40} width="100%" viewBox={`0 0 ${w} ${h + 35}`}>
-                    {moodPts && <Polyline points={moodPts} fill="none" stroke={T.primary} strokeWidth="2" strokeLinejoin="round" />}
-                    {energyPts && <Polyline points={energyPts} fill="none" stroke={T.success} strokeWidth="2" strokeDasharray="4,3" strokeLinejoin="round" />}
+                  <Svg height={moodChart.h + 40} width="100%" viewBox={`0 0 ${moodChart.w} ${moodChart.h + 35}`}>
+                    {moodChart.moodPts && <Polyline points={moodChart.moodPts} fill="none" stroke={T.primary} strokeWidth="2" strokeLinejoin="round" />}
+                    {moodChart.energyPts && <Polyline points={moodChart.energyPts} fill="none" stroke={T.success} strokeWidth="2" strokeDasharray="4,3" strokeLinejoin="round" />}
                     {corr.filter((d: any) => d.mood).map((d: any, i: number, arr: any[]) => {
-                      const cx = (i / Math.max(arr.length - 1, 1)) * w;
-                      const cy = h - ((d.mood - 1) / 4) * (h - 15);
+                      const cx = (i / Math.max(arr.length - 1, 1)) * moodChart.w;
+                      const cy = moodChart.h - ((d.mood - 1) / 4) * (moodChart.h - 15);
                       return <Circle key={i} cx={cx} cy={cy} r="3" fill={T.primary} />;
                     })}
                     {corr.filter((d: any) => d.energy).map((d: any, i: number, arr: any[]) => {
-                      const cx = (i / Math.max(arr.length - 1, 1)) * w;
-                      const cy = h - ((d.energy - 1) / 4) * (h - 15);
+                      const cx = (i / Math.max(arr.length - 1, 1)) * moodChart.w;
+                      const cy = moodChart.h - ((d.energy - 1) / 4) * (moodChart.h - 15);
                       return <Circle key={i} cx={cx} cy={cy} r="3" fill={T.success} />;
                     })}
                   </Svg>
                 </Card>
-              );
-            })()}
+              )}
 
             {/* Sleep 30-day Area Chart */}
-            {(() => {
-              const sleepData = Array.from({ length: 30 }, (_, i) => {
-                const d = new Date();
-                d.setDate(d.getDate() - 29 + i);
-                const dd = fmt(d);
-                const entry = journal.filter((j: any) => j.date === dd).slice(-1)[0];
-                return { date: d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" }), sleep: entry?.sleep || 0 };
-              }).filter((d) => d.sleep > 0);
-              if (sleepData.length < 2) return null;
-              const w = 300; const h = 80;
-              const maxS = 10;
-              const pts = sleepData.map((d: any, i: number) => `${(i / Math.max(sleepData.length - 1, 1)) * w},${h - (d.sleep / maxS) * (h - 10)}`).join(" ");
-              const areaPts = `0,${h} ${pts} ${w},${h}`;
-              const refY = h - (7 / maxS) * (h - 10);
-              return (
+            {sleepChart && (
                 <Card T={T} style={{ marginBottom: 14 }}>
                   <Lbl T={T}>💤 Сон за 30 дней</Lbl>
-                  <Svg height={h + 30} width="100%" viewBox={`0 0 ${w} ${h + 30}`}>
+                  <Svg height={sleepChart.h + 30} width="100%" viewBox={`0 0 ${sleepChart.w} ${sleepChart.h + 30}`}>
                     <Defs>
                       <LinearGradient id="sleepGrad" x1="0" y1="0" x2="0" y2="1">
                         <Stop offset="0" stopColor={T.success} stopOpacity="0.25" />
                         <Stop offset="1" stopColor={T.success} stopOpacity="0" />
                       </LinearGradient>
                     </Defs>
-                    <Line x1="0" y1={refY} x2={w} y2={refY} stroke={T.muted} strokeWidth="1" strokeDasharray="3,3" />
-                    <SvgText x={w - 5} y={refY - 4} textAnchor="end" fill={T.muted} fontSize="8">7ч</SvgText>
-                    <Polygon points={areaPts} fill="url(#sleepGrad)" />
-                    <Polyline points={pts} fill="none" stroke={T.success} strokeWidth="2" strokeLinejoin="round" />
-                    {sleepData.map((d: any, i: number) => {
-                      const cx = (i / Math.max(sleepData.length - 1, 1)) * w;
-                      const cy = h - (d.sleep / maxS) * (h - 10);
+                    <Line x1="0" y1={sleepChart.refY} x2={sleepChart.w} y2={sleepChart.refY} stroke={T.muted} strokeWidth="1" strokeDasharray="3,3" />
+                    <SvgText x={sleepChart.w - 5} y={sleepChart.refY - 4} textAnchor="end" fill={T.muted} fontSize="8">7ч</SvgText>
+                    <Polygon points={sleepChart.areaPts} fill="url(#sleepGrad)" />
+                    <Polyline points={sleepChart.pts} fill="none" stroke={T.success} strokeWidth="2" strokeLinejoin="round" />
+                    {sleepChart.sleepData.map((d: any, i: number) => {
+                      const cx = (i / Math.max(sleepChart.sleepData.length - 1, 1)) * sleepChart.w;
+                      const cy = sleepChart.h - (d.sleep / sleepChart.maxS) * (sleepChart.h - 10);
                       return (
                         <G key={i}>
                           <Circle cx={cx} cy={cy} r="3" fill={d.sleep >= 7 ? T.success : d.sleep >= 6 ? T.warn : T.danger} stroke={T.card} strokeWidth="1.5" />
-                          {i % 5 === 0 && <SvgText x={cx} y={h + 14} textAnchor="middle" fill={T.muted} fontSize="8">{d.date}</SvgText>}
+                          {i % 5 === 0 && <SvgText x={cx} y={sleepChart.h + 14} textAnchor="middle" fill={T.muted} fontSize="8">{d.date}</SvgText>}
                         </G>
                       );
                     })}
                   </Svg>
                 </Card>
-              );
-            })()}
+              )}
           </>
         )}
         {sub === "achievements" && (
