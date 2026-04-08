@@ -2233,7 +2233,7 @@ function AISettingsModal({ T, aiConfig, onSave, onClose }: any) {
 }
 
 /* ══════════ STATS TAB ══════════ */
-function StatsTab({ T, history, tasks, goals, journal, achievements, user, setState }: any) {
+const StatsTab = React.memo(function StatsTab({ T, history, tasks, goals, journal, achievements, user, setState }: any) {
   const [sub, setSub] = useState("stats");
   const [selEx, setSelEx] = useState("pushups");
   const [trendSelIdx, setTrendSelIdx] = useState<number | null>(null);
@@ -2248,9 +2248,15 @@ function StatsTab({ T, history, tasks, goals, journal, achievements, user, setSt
   const trackedEx = useMemo(() => PLAN.flatMap((d) => d.exercises || []).reduce((a: any[], e) => { if (!a.find((x) => x.id === e.id)) a.push(e); return a; }, []), []);
   const earned = achievements || [];
   const notEarned = useMemo(() => ACHIEVEMENT_DEFS.filter((a) => !earned.includes(a.id)), [earned]);
+  const score = useMemo(() => calcLifeScore(history, tasks, journal), [history, tasks, journal]);
   
   const trend = useMemo(() => exerciseTrend(history, selEx), [history, selEx]);
   const auto1RM = useMemo(() => computeAuto1RM(history), [history]);
+  const wStats = useMemo(() => weeklyWorkoutStats(history), [history]);
+  const wTonnage = useMemo(() => weeklyTonnage(history), [history]);
+  const corr = useMemo(() => moodWorkoutCorrelation(history, journal), [history, journal]);
+  const maxCount = useMemo(() => Math.max(...wStats.map((w: any) => w.count), 1), [wStats]);
+  const maxT = useMemo(() => Math.max(...wTonnage.map((w: any) => w.tonnage), 1), [wTonnage]);
 
   return (
     <View style={{ flex: 1 }}>
@@ -2373,8 +2379,7 @@ function StatsTab({ T, history, tasks, goals, journal, achievements, user, setSt
             )}
 
             {/* Life Balance Radar Chart */}
-            {(() => {
-              const score = calcLifeScore(history, tasks, journal);
+            {useMemo(() => {
               const vals = [
                 { label: "Трен.", value: score.workout },
                 { label: "Задачи", value: score.tasks ?? 0 },
@@ -2403,65 +2408,44 @@ function StatsTab({ T, history, tasks, goals, journal, achievements, user, setSt
               return (
                 <Card T={T} style={{ marginBottom: 14 }}>
                   <Lbl T={T}>🕸 Баланс жизни</Lbl>
-                  <Svg height="240" width="100%" viewBox="0 0 200 200">
+                  <Svg height="200" width="100%" viewBox="0 0 200 200">
                     {gridPts.map((pts, li) => (
-                      <Polygon key={li} points={pts.map((p) => `${p.x},${p.y}`).join(" ")} fill="none" stroke={T.bord} strokeWidth="0.8" />
+                      <Polygon key={`g${li}`} points={pts.map((p) => `${p.x},${p.y}`).join(" ")} fill="none" stroke={T.bord} strokeWidth="0.8" />
                     ))}
                     {Array.from({ length: axes }, (_, i) => {
                       const angle = (i / axes) * Math.PI * 2;
                       const end = getPoint(angle, 1);
-                      return <Line key={i} x1={cx} y1={cy} x2={end.x} y2={end.y} stroke={T.bord} strokeWidth="0.8" />;
+                      return <Line key={`a${i}`} x1={cx} y1={cy} x2={end.x} y2={end.y} stroke={T.bord} strokeWidth="0.8" />;
                     })}
                     <Polygon points={polyStr} fill={`${T.primary}30`} stroke={T.primary} strokeWidth="2" />
                     {dataPts.map((p, i) => (
-                      <G key={i}>
+                      <G key={`d${i}`}>
                         <Circle cx={p.x} cy={p.y} r="3.5" fill={T.primary} stroke={T.card} strokeWidth="1.5" />
                         <SvgText x={p.x} y={p.y - 8} textAnchor="middle" fill={T.primary} fontSize="9" fontWeight="700">{vals[i].value}</SvgText>
                       </G>
                     ))}
-                    {vals.map((v, i) => {
-                      const angle = (i / axes) * Math.PI * 2;
-                      const labelPt = getPoint(angle, 1.18);
-                      return <SvgText key={i} x={labelPt.x} y={labelPt.y} textAnchor="middle" fill={T.muted} fontSize="9">{v.label}</SvgText>;
-                    })}
                   </Svg>
                 </Card>
               );
-            })()}
+            }, [score.workout, score.tasks, score.journal, streak, goals, T.primary, T.bord, T.card])}
 
             {/* Weekly Workouts Bar Chart */}
-            {(() => {
-              const wStats = weeklyWorkoutStats(history);
-              const maxCount = Math.max(...wStats.map((w: any) => w.count), 1);
-              const barW = 28; const barGap = 8; const chartW = wStats.length * (barW + barGap);
-              const chartH = 100;
-              return (
-                <Card T={T} style={{ marginBottom: 14 }}>
-                  <Lbl T={T}>📊 Тренировки по неделям</Lbl>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
-                    <Svg height={chartH + 50} width={chartW + 20}>
-                      {wStats.map((w: any, i: number) => {
-                        const x = 10 + i * (barW + barGap);
-                        const h = (w.count / maxCount) * (chartH - 20);
-                        return (
-                          <G key={i}>
-                            <Rect x={x} y={chartH - h - 15} width={barW} height={h} rx="4" fill={w.count > 0 ? T.primary : T.lo} />
-                            <SvgText x={x + barW / 2} y={chartH - h - 18} textAnchor="middle" fill={w.count > 0 ? T.primary : T.muted} fontSize="10" fontWeight="700">{w.count}</SvgText>
-                            <SvgText x={x + barW / 2} y={chartH + 5} textAnchor="middle" fill={T.muted} fontSize="8">{w.week}</SvgText>
-                          </G>
-                        );
-                      })}
-                    </Svg>
-                  </ScrollView>
-                </Card>
-              );
-            })()}
+            <Card T={T} style={{ marginBottom: 14 }}>
+              <Lbl T={T}>📊 Тренировки по неделям</Lbl>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                <View style={{ flexDirection: "row", gap: 8, paddingRight: 20 }}>
+                  {wStats.map((w: any, i: number) => (
+                    <View key={i} style={{ alignItems: "center", minWidth: 40 }}>
+                      <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 16, color: w.count > 0 ? T.primary : T.muted }}>{w.count}</Text>
+                      <Text style={{ fontFamily: "System", fontSize: 10, color: T.muted, marginTop: 2 }}>{w.week}</Text>
+                    </View>
+                  ))}
+                </View>
+              </ScrollView>
+            </Card>
 
             {/* Weekly Tonnage Area Chart */}
-            {(() => {
-              const wTonnage = weeklyTonnage(history);
-              if (!wTonnage || wTonnage.length === 0) return null;
-              const maxT = Math.max(...wTonnage.map((w: any) => w.tonnage), 1);
+            {wTonnage.length > 0 && (() => {
               const w = 300; const h = 100;
               const pts = wTonnage.map((d: any, i: number) => `${(i / Math.max(wTonnage.length - 1, 1)) * w},${h - (d.tonnage / maxT) * (h - 15)}`).join(" ");
               const areaPts = `0,${h} ${pts} ${w},${h}`;
@@ -2715,7 +2699,7 @@ function AnatomyTab({ T, history }: any) {
       </View>
     </>
   );
-}
+});
 
 /* ══════════ PROFILE TAB ══════════ */
 function ProfileTab({ T, state, setState }: any) {
