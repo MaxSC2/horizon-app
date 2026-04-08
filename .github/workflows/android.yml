@@ -35,10 +35,11 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Bundle JS
+      - name: Export JS bundle
         run: |
+          npx expo export --platform android --output-dir dist
           mkdir -p android/app/src/main/assets
-          npx react-native bundle --platform android --dev false --entry-file index.tsx --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res
+          cp dist/index.android.bundle android/app/src/main/assets/
 
       - name: Build APK
         run: cd android && ./gradlew assembleDebug --no-daemon
