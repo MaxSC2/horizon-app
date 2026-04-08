@@ -39,7 +39,7 @@ jobs:
         run: |
           npx expo export --platform android --output-dir dist
           mkdir -p android/app/src/main/assets
-          cp dist/index.android.bundle android/app/src/main/assets/
+          cp dist/_expo/static/js/android/*.hbc android/app/src/main/assets/index.android.bundle 2>/dev/null || cp dist/_expo/static/js/android/*.hbc android/app/src/main/assets/
 
       - name: Build APK
         run: cd android && ./gradlew assembleDebug --no-daemon
