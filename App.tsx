@@ -625,20 +625,20 @@ function ExerciseCard({ T, exercise, logs, onComplete, onValueChange, onRest, pr
 /* ══════════ DASHBOARD ══════════ */
 function DashboardTab({ T, state, setState, onStartWorkout }: any) {
   const { history, tasks, goals, journal } = state;
-  const score = calcLifeScore(history, tasks, journal);
-  const moodData = last7MoodData(journal);
-  const workoutStreak = calcStreak(history);
+  const score = useMemo(() => calcLifeScore(history, tasks, journal), [history, tasks, journal]);
+  const moodData = useMemo(() => last7MoodData(journal), [journal]);
+  const workoutStreak = useMemo(() => calcStreak(history), [history]);
   const todayI = todayIdx();
   const todayPlan = PLAN[todayI];
   const todayLog = history[TODAY];
-  const todayTasks = tasks.filter((t: any) => t.recurring || t.dueDate === TODAY);
+  const todayTasks = useMemo(() => tasks.filter((t: any) => t.recurring || t.dueDate === TODAY), [tasks, journal]);
   const todayTasksDone = todayTasks.filter((t: any) => t.completedDates?.includes(TODAY)).length;
-  const activeGoals = goals.filter((g: any) => !g.completed).slice(0, 3);
-  const todayJournal = journal.find((j: any) => j.date === TODAY);
+  const activeGoals = useMemo(() => goals.filter((g: any) => !g.completed).slice(0, 3), [goals]);
+  const todayJournal = useMemo(() => journal.find((j: any) => j.date === TODAY), [journal]);
   const waterToday = todayJournal?.waterGlasses || 0;
   const dayNum = Math.floor(Date.now() / 86400000);
   const quote = QUOTES[dayNum % QUOTES.length];
-  const progressionAlerts = getAllProgressionSuggestions(history);
+  const progressionAlerts = useMemo(() => getAllProgressionSuggestions(history), [history]);
 
   const setWaterGlass = (n: number) => {
     setState((s: any) => {
@@ -2238,17 +2238,19 @@ function StatsTab({ T, history, tasks, goals, journal, achievements, user, setSt
   const [selEx, setSelEx] = useState("pushups");
   const [trendSelIdx, setTrendSelIdx] = useState<number | null>(null);
   const [tonnageSelIdx, setTonnageSelIdx] = useState<number | null>(null);
-  const prs = getPRs(history);
-  const trend = require("./src/utils/helpers").exerciseTrend(history, selEx);
-  const totalW = Object.values(history).filter((l: any) => l.completed).length;
-  const streak = calcStreak(history);
-  const auto1RM = require("./src/utils/helpers").computeAuto1RM(history);
-  const alerts = getAllProgressionSuggestions(history);
+  
+  const prs = useMemo(() => getPRs(history), [history]);
+  const streak = useMemo(() => calcStreak(history), [history]);
+  const totalW = useMemo(() => Object.values(history).filter((l: any) => l.completed).length, [history]);
+  const avgDiff = useMemo(() => totalW > 0 ? (Object.values(history).reduce((s: number, l: any) => s + (l.difficulty || 5), 0) / totalW).toFixed(1) : "—", [history, totalW]);
+  const avgSleep = useMemo(() => journal.length > 0 ? (journal.reduce((s: number, j: any) => s + (j.sleep || 0), 0) / journal.filter((j: any) => j.sleep > 0).length).toFixed(1) : "—", [journal]);
+  const alerts = useMemo(() => getAllProgressionSuggestions(history), [history]);
+  const trackedEx = useMemo(() => PLAN.flatMap((d) => d.exercises || []).reduce((a: any[], e) => { if (!a.find((x) => x.id === e.id)) a.push(e); return a; }, []), []);
   const earned = achievements || [];
-  const notEarned = ACHIEVEMENT_DEFS.filter((a) => !earned.includes(a.id));
-  const trackedEx = PLAN.flatMap((d) => d.exercises || []).reduce((a: any[], e) => { if (!a.find((x) => x.id === e.id)) a.push(e); return a; }, []);
-  const avgDiff = totalW > 0 ? (Object.values(history).reduce((s: number, l: any) => s + (l.difficulty || 5), 0) / totalW).toFixed(1) : "—";
-  const avgSleep = journal.length > 0 ? (journal.reduce((s: number, j: any) => s + (j.sleep || 0), 0) / journal.filter((j: any) => j.sleep > 0).length).toFixed(1) : "—";
+  const notEarned = useMemo(() => ACHIEVEMENT_DEFS.filter((a) => !earned.includes(a.id)), [earned]);
+  
+  const trend = useMemo(() => exerciseTrend(history, selEx), [history, selEx]);
+  const auto1RM = useMemo(() => computeAuto1RM(history), [history]);
 
   return (
     <View style={{ flex: 1 }}>
