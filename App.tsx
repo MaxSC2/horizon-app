@@ -12,6 +12,8 @@ import {
   getAllProgressionSuggestions, weeklyTonnage, moodWorkoutCorrelation,
   computeAuto1RM, sleepLabel, last7MoodData, calcLifeScore,
   checkAchievements, buildAIContext,
+  getHeatMapData, getMuscleRecovery, generateInsights,
+  goalForecast, getMonthlyStats,
 } from "./src/utils/helpers";
 import { callAI } from "./src/utils/ai";
 import {
@@ -19,12 +21,18 @@ import {
   ONBOARD_STEPS, AI_PROVIDERS, QUICK_PROMPTS,
   TASK_CATS, GOAL_CATS, PAIN_ZONES, PAIN_INTENSITY,
   MOODS, ENERGY, THEME_LIST, DEFAULTS,
+  FOOD_PRESETS, MACRO_GOALS, STYLE_LIST,
 } from "./src/data/constants";
+import { useStyledIcon } from "./src/components/useStyledIcon";
 
 const W = Dimensions.get("window").width;
 const MAX_W = Math.min(W, 480);
 
-function getTheme(id: string) { return THEME_LIST.find((x) => x.id === id) || THEME_LIST[0]; }
+function getTheme(id: string, styleId: string = "standard") {
+  const theme = THEME_LIST.find((x) => x.id === id) || THEME_LIST[0];
+  const style = STYLE_LIST.find((x) => x.id === styleId) || STYLE_LIST[0];
+  return { ...theme, ...style };
+}
 
 /* ══════════ EXPORT ══════════ */
 async function exportJSON(state: any) {
@@ -68,30 +76,70 @@ function Badge({ children, color, T }: { children: React.ReactNode; color: strin
 }
 
 function Card({ children, style, T }: { children: React.ReactNode; style?: any; T: any }) {
-  return <View style={[{ backgroundColor: T.card, borderColor: T.bord, borderWidth: 1, borderRadius: 14, padding: 16 }, style]}>{children}</View>;
+  const radius = T.radius || 12;
+  const borderW = T.borderWidth || 1;
+  const shadowColor = T.glowColor || "#000";
+  const shadowStyle = T.shadow > 0 ? { shadowColor, shadowOffset: { width: 0, height: T.shadow / 3 }, shadowOpacity: T.showGlow ? 0.5 : 0.3, shadowRadius: T.shadow, elevation: Math.max(T.shadow / 4, 1) } : {};
+  const bgColor = T.opacity ? `${T.card}${Math.round(T.opacity * 255).toString(16).padStart(2, '0')}` : T.card;
+  const borderColor = T.accent === "neon" ? T.primary : (T.borderWidth > 1 ? T.primary : T.bord);
+  return <View style={[{ backgroundColor: bgColor, borderColor, borderWidth: borderW, borderRadius: radius, padding: 16 }, shadowStyle, style]}>{children}</View>;
 }
 
 function Btn({ children, onPress, variant = "primary", style, T, disabled }: { children: React.ReactNode; onPress?: () => void; variant?: string; style?: any; T: any; disabled?: boolean }) {
+  const radius = T.radius || 10;
   const v: any = {
     primary: { backgroundColor: T.primary, color: "#000" },
-    ghost: { backgroundColor: "transparent", color: T.primary, borderColor: T.primary, borderWidth: 1.5 },
+    ghost: { backgroundColor: "transparent", color: T.primary, borderColor: T.primary, borderWidth: T.cardBorder ? (T.borderWidth || 2) : 1.5 },
     danger: { backgroundColor: T.danger, color: "#fff" },
     success: { backgroundColor: T.success, color: "#000" },
     muted: { backgroundColor: T.lo, color: T.txt, borderColor: T.bord, borderWidth: 1 },
     warn: { backgroundColor: T.warn, color: "#000" },
   }[variant] || { backgroundColor: T.primary, color: "#000" };
   return (
-    <TouchableOpacity disabled={disabled} onPress={onPress} style={[{ minHeight: 44, paddingHorizontal: 18, borderRadius: 10, justifyContent: "center", alignItems: "center", opacity: disabled ? 0.5 : 1 }, v, style]}>
+    <TouchableOpacity disabled={disabled} onPress={onPress} style={[{ minHeight: 44, paddingHorizontal: 18, borderRadius: radius, justifyContent: "center", alignItems: "center", opacity: disabled ? 0.5 : 1 }, v, style]}>
       <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 15, color: v.color }}>{children}</Text>
     </TouchableOpacity>
   );
 }
 
-function Ring({ pct, size = 64, color, label, T }: any) {
+function Ring({ pct, size = 64, color, label, T, strokeWidth, showPercent }: any) {
+  const sw = strokeWidth || size / 8;
+  const r = (size - sw) / 2;
+  const circumference = 2 * Math.PI * r;
+  const progress = Math.min(pct, 100) / 100;
+  const strokeDashoffset = circumference * (1 - progress);
+  
   return (
     <View style={{ alignItems: "center", gap: 3 }}>
       <View style={{ width: size, height: size, justifyContent: "center", alignItems: "center" }}>
-        <Text style={{ fontSize: 13, fontWeight: "900", color }}>{pct}%</Text>
+        <Svg width={size} height={size} style={{ position: "absolute" }}>
+          <Circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            stroke={T.lo}
+            strokeWidth={sw}
+            fill="none"
+          />
+          <Circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            stroke={color}
+            strokeWidth={sw}
+            fill="none"
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+            rotation={-90}
+            origin={`${size / 2}, ${size / 2}`}
+          />
+        </Svg>
+        <View style={{ justifyContent: "center", alignItems: "center" }}>
+          {showPercent !== false && (
+            <Text style={{ fontSize: size / 4, fontWeight: "900", color }}>{Math.round(pct)}%</Text>
+          )}
+        </View>
       </View>
       {label && <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 10, color: T.muted, letterSpacing: 0.5, textTransform: "uppercase" }}>{label}</Text>}
     </View>
@@ -151,6 +199,7 @@ function Numpad({ T, value, onChange, onConfirm, unit, placeholder, color }: any
 /* ══════════ REST TIMER ══════════ */
 function RestTimer({ T, onDone }: any) {
   const [s, setS] = useState(90);
+  const presets = [60, 90, 120, 180];
   useEffect(() => {
     const ref = setInterval(() => setS((x) => { if (x <= 1) { clearInterval(ref); onDone(); return 0; } return x - 1; }), 1000);
     return () => clearInterval(ref);
@@ -161,6 +210,13 @@ function RestTimer({ T, onDone }: any) {
         <View style={{ backgroundColor: T.card, borderColor: T.bord, borderWidth: 1, borderRadius: 20, padding: 32, alignItems: "center", minWidth: 240 }}>
           <Lbl T={T}>⏱ ОТДЫХ</Lbl>
           <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 48, color: s < 20 ? T.warn : s < 45 ? T.primary : T.success, marginVertical: 12 }}>{s}</Text>
+          <View style={{ flexDirection: "row", gap: 6, marginBottom: 12 }}>
+            {presets.map((p) => (
+              <TouchableOpacity key={p} onPress={() => setS(p)} style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderColor: T.bord, borderWidth: 1, backgroundColor: s === p ? T.primary : T.lo }}>
+                <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: s === p ? "#fff" : T.muted }}>{p}с</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
           <Btn T={T} variant="muted" onPress={onDone} style={{ width: "100%" }}>Пропустить →</Btn>
         </View>
       </View>
@@ -209,12 +265,19 @@ function OnboardingScreen({ T, onComplete }: any) {
 }
 
 /* ══════════ HEADER ══════════ */
-function Header({ T, streak, onOpenThemes }: any) {
+function Header({ T, streak, onOpenThemes, styleId }: any) {
+  const { getIcon } = useStyledIcon(styleId || "standard");
+  
+  const getStyleRadius = () => {
+    const style = STYLE_LIST.find(s => s.id === (styleId || "standard"));
+    return style?.radius || 12;
+  };
+  
   return (
     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: T.bord, backgroundColor: T.surf }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-        <View style={{ width: 32, height: 32, borderRadius: 9, backgroundColor: `${T.primary}20`, borderColor: `${T.primary}44`, borderWidth: 1.5, justifyContent: "center", alignItems: "center" }}>
-          <Text style={{ fontSize: 17 }}>🌅</Text>
+        <View style={{ width: 32, height: 32, borderRadius: getStyleRadius(), backgroundColor: `${T.primary}20`, borderColor: `${T.primary}44`, borderWidth: 1.5, justifyContent: "center", alignItems: "center" }}>
+          {getIcon("rest", T.primary)}
         </View>
         <View>
           <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 22, letterSpacing: 2, color: T.txt }}>ГОРИЗОНТ</Text>
@@ -228,7 +291,7 @@ function Header({ T, streak, onOpenThemes }: any) {
             <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 15, color: T.warn }}>{streak}</Text>
           </View>
         )}
-        <TouchableOpacity onPress={onOpenThemes} style={{ width: 34, height: 34, borderRadius: 9, borderColor: T.bord, borderWidth: 1, backgroundColor: T.lo, justifyContent: "center", alignItems: "center" }}>
+        <TouchableOpacity onPress={onOpenThemes} style={{ width: 34, height: 34, borderRadius: getStyleRadius(), borderColor: T.bord, borderWidth: 1, backgroundColor: T.lo, justifyContent: "center", alignItems: "center" }}>
           <Text style={{ fontSize: 16 }}>🎨</Text>
         </TouchableOpacity>
       </View>
@@ -237,34 +300,34 @@ function Header({ T, streak, onOpenThemes }: any) {
 }
 
 /* ══════════ THEME PICKER ══════════ */
-function ThemePicker({ T, currentThemeId, onSelect, onClose }: any) {
+function ThemePicker({ T, currentThemeId, currentStyleId, onSelect, onStyleSelect, onClose }: any) {
   const darkThemes = THEME_LIST.filter((t) => t.dark);
   const lightThemes = THEME_LIST.filter((t) => !t.dark);
   const current = THEME_LIST.find((x) => x.id === currentThemeId);
+  const currentStyle = STYLE_LIST.find((x) => x.id === currentStyleId) || STYLE_LIST[0];
 
   const renderThemeCard = (theme: any) => {
-    const th = getTheme(theme.id);
+    const th = getTheme(theme.id, currentStyleId);
     const cur = currentThemeId === theme.id;
     return (
       <TouchableOpacity key={theme.id} onPress={() => onSelect(theme.id)}
         style={{
           width: "47%",
-          borderRadius: 14,
+          borderRadius: Math.min(currentStyle.radius, 20),
           backgroundColor: th.card,
           borderColor: cur ? th.primary : T.bord,
           borderWidth: cur ? 2.5 : 1.5,
           padding: 12,
           gap: 8,
+          ...(currentStyle.shadow > 0 ? { shadowColor: "#000", shadowOffset: { width: 0, height: currentStyle.shadow / 3 }, shadowOpacity: 0.35, shadowRadius: currentStyle.shadow } : {}),
         }}>
-        {/* Color palette strip */}
         <View style={{ flexDirection: "row", gap: 3, marginBottom: 4 }}>
           {[th.primary, th.success, th.warn, th.danger].map((c, i) => (
             <View key={i} style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: c }} />
           ))}
         </View>
-        {/* Mini UI preview */}
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: `${th.primary}20`, justifyContent: "center", alignItems: "center" }}>
+          <View style={{ width: 28, height: 28, borderRadius: Math.min(currentStyle.radius / 2, 10), backgroundColor: `${th.primary}20`, justifyContent: "center", alignItems: "center" }}>
             <Text style={{ fontSize: 14 }}>{theme.icon}</Text>
           </View>
           <View>
@@ -282,36 +345,148 @@ function ThemePicker({ T, currentThemeId, onSelect, onClose }: any) {
     );
   };
 
+  const renderStyleCard = (style: any) => {
+    const cur = currentStyleId === style.id;
+    const previewRadius = Math.min(style.radius, 16);
+    return (
+      <TouchableOpacity key={style.id} onPress={() => onStyleSelect(style.id)}
+        style={{
+          width: "31%",
+          borderRadius: previewRadius,
+          backgroundColor: cur ? `${T.primary}15` : T.lo,
+          borderColor: cur ? T.primary : T.bord,
+          borderWidth: cur ? 2.5 : 1.5,
+          padding: 10,
+          alignItems: "center",
+          gap: 6,
+          ...(style.shadow > 0 ? { shadowColor: "#000", shadowOffset: { width: 0, height: style.shadow / 4 }, shadowOpacity: 0.3, shadowRadius: style.shadow / 2 } : {}),
+        }}>
+        <Text style={{ fontSize: 22, color: cur ? T.primary : T.txt }}>{style.icon}</Text>
+        <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 11, color: cur ? T.primary : T.txt, textAlign: "center" }}>{style.name}</Text>
+        <Text style={{ fontFamily: "System", fontSize: 8, color: T.muted, textAlign: "center" }}>{style.desc.split(" ").slice(0, 3).join(" ")}</Text>
+        {cur && (
+          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: T.primary }} />
+        )}
+      </TouchableOpacity>
+    );
+  };
+
+  return (
+    <Modal transparent animationType="slide" visible>
+      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,.8)", justifyContent: "flex-end" }}>
+        <View style={{ backgroundColor: T.surf, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 20, maxHeight: "90%" }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 16 }}>
+            <View>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 18, color: T.txt }}>Оформление</Text>
+              <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted, marginTop: 2 }}>{THEME_LIST.length} цветов + {STYLE_LIST.length} стилей</Text>
+            </View>
+            <TouchableOpacity onPress={onClose}><Text style={{ fontSize: 20, color: T.muted }}>✕</Text></TouchableOpacity>
+          </View>
+
+          <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
+            {/* Style selection - grid */}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
+              <Text style={{ fontSize: 14, color: T.primary }}>{'>'}</Text>
+              <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: T.muted, letterSpacing: 1, textTransform: "uppercase" }}>Стиль интерфейса</Text>
+            </View>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+              {STYLE_LIST.map(renderStyleCard)}
+            </View>
+
+            {/* Dark themes */}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
+              <Text style={{ fontSize: 14 }}>{'◐'}</Text>
+              <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: T.muted, letterSpacing: 1, textTransform: "uppercase" }}>Тёмные</Text>
+            </View>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+              {darkThemes.map(renderThemeCard)}
+            </View>
+
+            {/* Light themes */}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
+              <Text style={{ fontSize: 14 }}>{'○'}</Text>
+              <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: T.muted, letterSpacing: 1, textTransform: "uppercase" }}>Светлые</Text>
+            </View>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
+              {lightThemes.map(renderThemeCard)}
+            </View>
+          </ScrollView>
+
+          <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted, textAlign: "center", marginTop: 10 }}>
+            {current?.icon} {current?.name} + {currentStyle?.icon} {currentStyle?.name}
+          </Text>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+/* ══════════ STYLE PICKER ══════════ */
+function StylePicker({ T, currentStyleId, onSelect, onClose }: any) {
+  const current = STYLE_LIST.find((x) => x.id === currentStyleId) || STYLE_LIST[0];
+
+  const renderStyleCard = (style: any) => {
+    const cur = currentStyleId === style.id;
+    const previewRadius = Math.min(style.radius, 20);
+    return (
+      <TouchableOpacity key={style.id} onPress={() => onSelect(style.id)}
+        style={{
+          width: "47%",
+          borderRadius: 10,
+          backgroundColor: T.card,
+          borderColor: cur ? T.primary : T.bord,
+          borderWidth: cur ? 2.5 : 1.5,
+          padding: 12,
+          gap: 8,
+          ...(style.shadow > 0 ? { shadowColor: "#000", shadowOffset: { width: 0, height: style.shadow / 2 }, shadowOpacity: 0.3, shadowRadius: style.shadow, elevation: style.shadow / 2 } : {}),
+        }}>
+        {/* Preview card */}
+        <View style={{
+          height: 40,
+          borderRadius: Math.min(style.radius, 12),
+          backgroundColor: T.lo,
+          borderWidth: style.cardBorder ? 2 : 1,
+          borderColor: T.primary,
+          justifyContent: "center",
+          paddingHorizontal: 8,
+        }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <View style={{ width: 12, height: 12, borderRadius: Math.min(style.radius / 2, 6), backgroundColor: T.primary }} />
+            <View style={{ flex: 1, height: 8, borderRadius: Math.min(style.radius / 3, 4), backgroundColor: T.bord }} />
+            <View style={{ width: 8, height: 8, borderRadius: Math.min(style.radius / 3, 4), backgroundColor: T.success }} />
+          </View>
+        </View>
+        {/* Label */}
+        <View style={{ alignItems: "center" }}>
+          <Text style={{ fontSize: 18 }}>{style.icon}</Text>
+          <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 11, color: T.txt, marginTop: 2 }}>{style.name}</Text>
+          <Text style={{ fontFamily: "System", fontSize: 9, color: T.muted, textAlign: "center" }}>{style.desc}</Text>
+        </View>
+        {/* Current badge */}
+        {cur && (
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, marginTop: 2 }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: T.primary }} />
+            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 10, color: T.primary }}>Сейчас</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <Modal transparent animationType="slide" visible>
       <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,.8)", justifyContent: "flex-end" }}>
         <View style={{ backgroundColor: T.surf, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 20, maxHeight: "85%" }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 16 }}>
             <View>
-              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 18, color: T.txt }}>Тема оформления</Text>
-              <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted, marginTop: 2 }}>{THEME_LIST.length} стилей · выбери свой горизонт</Text>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 18, color: T.txt }}>Стиль интерфейса</Text>
+              <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted, marginTop: 2 }}>{STYLE_LIST.length} стилей · меняет форму и глубину</Text>
             </View>
             <TouchableOpacity onPress={onClose}><Text style={{ fontSize: 20, color: T.muted }}>✕</Text></TouchableOpacity>
           </View>
-
-          {/* Dark themes */}
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
-            <Text style={{ fontSize: 14 }}>🌙</Text>
-            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: T.muted, letterSpacing: 1, textTransform: "uppercase" }}>Тёмные темы</Text>
-          </View>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
-            {darkThemes.map(renderThemeCard)}
-          </View>
-
-          {/* Light themes */}
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
-            <Text style={{ fontSize: 14 }}>☀️</Text>
-            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: T.muted, letterSpacing: 1, textTransform: "uppercase" }}>Светлые темы</Text>
-          </View>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
-            {lightThemes.map(renderThemeCard)}
+            {STYLE_LIST.map(renderStyleCard)}
           </View>
-
           <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted, textAlign: "center", marginTop: 4 }}>
             {current?.icon} {current?.name} — {current?.desc}
           </Text>
@@ -322,24 +497,63 @@ function ThemePicker({ T, currentThemeId, onSelect, onClose }: any) {
 }
 
 /* ══════════ BOTTOM NAV ══════════ */
-function BottomNav({ T, tab, setTab, hasActive }: any) {
+function BottomNav({ T, tab, setTab, hasActive, styleId }: any) {
+  const { getIcon } = useStyledIcon(styleId || "standard");
+  
+  const getTabIcon = (id: string) => {
+    switch (id) {
+      case "dashboard": return getIcon("rest", isActive(id) ? T.primary : T.muted);
+      case "workout": return getIcon("workout", isActive(id) ? T.primary : T.muted);
+      case "tasks": return getIcon("task", isActive(id) ? T.primary : T.muted);
+      case "nutrition": return getIcon("food", isActive(id) ? T.primary : T.muted);
+      case "journal": return getIcon("water", isActive(id) ? T.primary : T.muted);
+      case "ai": return <Text style={{ fontSize: 18 }}>🤖</Text>;
+      case "stats": return <Text style={{ fontSize: 18 }}>📊</Text>;
+      default: return null;
+    }
+  };
+  
+  const isActive = (id: string) => tab === id;
+  
   const tabs = [
-    { id: "dashboard", label: "🏠", label2: "ГОРИЗОНТ" },
-    { id: "workout", label: hasActive ? "⚡" : "💪", label2: "ТРЕН." },
-    { id: "tasks", label: "📋", label2: "ЗАДАЧИ" },
-    { id: "journal", label: "📓", label2: "ДНЕВН." },
-    { id: "ai", label: "🤖", label2: "РАЗУМ" },
-    { id: "stats", label: "📊", label2: "СТАТЫ" },
+    { id: "dashboard", label2: "ГОРИЗОНТ" },
+    { id: "workout", label2: "ТРЕН." },
+    { id: "tasks", label2: "ЗАДАЧИ" },
+    { id: "nutrition", label2: "ПИТАНИЕ" },
+    { id: "journal", label2: "ДНЕВН." },
+    { id: "ai", label2: "РАЗУМ" },
+    { id: "stats", label2: "СТАТЫ" },
   ];
+  
+  const getStyleRadius = () => {
+    const style = STYLE_LIST.find(s => s.id === (styleId || "standard"));
+    return style?.radius || 12;
+  };
+  
   return (
     <View style={{ flexDirection: "row", backgroundColor: T.surf, borderTopWidth: 1, borderTopColor: T.bord, paddingBottom: 8 }}>
-      {tabs.map(({ id, label, label2 }) => {
-        const isActive = tab === id;
+      {tabs.map(({ id, label2 }) => {
+        const active = isActive(id);
         return (
           <TouchableOpacity key={id} onPress={() => setTab(id)}
-            style={{ flex: 1, alignItems: "center", paddingVertical: 6, borderTopWidth: 2.5, borderTopColor: isActive ? T.primary : "transparent" }}>
-            <Text style={{ fontSize: 18 }}>{label}</Text>
-            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 8, color: isActive ? T.primary : T.muted, marginTop: 2, letterSpacing: 0.5 }}>{label2}</Text>
+            style={{ 
+              flex: 1, 
+              alignItems: "center", 
+              paddingVertical: 6, 
+              borderTopWidth: 2.5, 
+              borderTopColor: active ? T.primary : "transparent",
+            }}>
+            <View style={{
+              width: 28,
+              height: 28,
+              borderRadius: getStyleRadius() / 2,
+              backgroundColor: active ? `${T.primary}15` : "transparent",
+              justifyContent: "center",
+              alignItems: "center",
+            }}>
+              {getTabIcon(id)}
+            </View>
+            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 8, color: active ? T.primary : T.muted, marginTop: 2, letterSpacing: 0.5 }}>{label2}</Text>
           </TouchableOpacity>
         );
       })}
@@ -411,20 +625,20 @@ function ExerciseCard({ T, exercise, logs, onComplete, onValueChange, onRest, pr
 /* ══════════ DASHBOARD ══════════ */
 function DashboardTab({ T, state, setState, onStartWorkout }: any) {
   const { history, tasks, goals, journal } = state;
-  const score = calcLifeScore(history, tasks, journal);
-  const moodData = last7MoodData(journal);
-  const workoutStreak = calcStreak(history);
+  const score = useMemo(() => calcLifeScore(history, tasks, journal), [history, tasks, journal]);
+  const moodData = useMemo(() => last7MoodData(journal), [journal]);
+  const workoutStreak = useMemo(() => calcStreak(history), [history]);
   const todayI = todayIdx();
   const todayPlan = PLAN[todayI];
   const todayLog = history[TODAY];
-  const todayTasks = tasks.filter((t: any) => t.recurring || t.dueDate === TODAY);
+  const todayTasks = useMemo(() => tasks.filter((t: any) => t.recurring || t.dueDate === TODAY), [tasks, journal]);
   const todayTasksDone = todayTasks.filter((t: any) => t.completedDates?.includes(TODAY)).length;
-  const activeGoals = goals.filter((g: any) => !g.completed).slice(0, 3);
-  const todayJournal = journal.find((j: any) => j.date === TODAY);
+  const activeGoals = useMemo(() => goals.filter((g: any) => !g.completed).slice(0, 3), [goals]);
+  const todayJournal = useMemo(() => journal.find((j: any) => j.date === TODAY), [journal]);
   const waterToday = todayJournal?.waterGlasses || 0;
   const dayNum = Math.floor(Date.now() / 86400000);
   const quote = QUOTES[dayNum % QUOTES.length];
-  const progressionAlerts = getAllProgressionSuggestions(history);
+  const progressionAlerts = useMemo(() => getAllProgressionSuggestions(history), [history]);
 
   const setWaterGlass = (n: number) => {
     setState((s: any) => {
@@ -444,38 +658,91 @@ function DashboardTab({ T, state, setState, onStartWorkout }: any) {
   const achievements = state.achievements || [];
 
   return (
-    <ScrollView style={{ padding: 14 }} contentContainerStyle={{ gap: 12 }}>
+    <ScrollView style={{ flex: 1, padding: 14 }} contentContainerStyle={{ gap: 12, paddingBottom: 33 }}>
       <Card T={T} style={{ borderColor: `${T.primary}22`, backgroundColor: `${T.primary}10` }}>
         <Text style={{ fontFamily: "System", fontSize: 14, color: T.txt, fontStyle: "italic", lineHeight: 20 }}>«{quote.text}»</Text>
         <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 11, color: T.primary, marginTop: 6 }}>— {quote.author.toUpperCase()}</Text>
       </Card>
 
-      <Card T={T} style={{ backgroundColor: `${T.primary}08`, borderColor: `${T.primary}33` }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <View>
-            <Lbl T={T}>Score недели</Lbl>
-            <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 38, color: score.total >= 80 ? T.success : score.total >= 50 ? T.warn : T.danger }}>
-              {score.total}<Text style={{ fontSize: 18, color: T.muted }}>/100</Text>
-            </Text>
+      <Card T={T} style={{ backgroundColor: T.card }}>
+        <View style={{ alignItems: "center", marginBottom: 16 }}>
+          {/* Main score ring */}
+          <View style={{ width: 160, height: 160, justifyContent: "center", alignItems: "center" }}>
+            <Svg width={160} height={160} style={{ position: "absolute" }}>
+              <Circle cx={80} cy={80} r={68} stroke={T.lo} strokeWidth={14} fill="none" />
+              <Circle
+                cx={80} cy={80} r={68}
+                stroke={score.total >= 80 ? T.success : score.total >= 50 ? T.warn : T.danger}
+                strokeWidth={14}
+                fill="none"
+                strokeDasharray={2 * Math.PI * 68}
+                strokeDashoffset={2 * Math.PI * 68 * (1 - score.total / 100)}
+                strokeLinecap="round"
+                rotation={-90}
+                origin="80, 80"
+              />
+            </Svg>
+            <View style={{ alignItems: "center" }}>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 48, color: score.total >= 80 ? T.success : score.total >= 50 ? T.warn : T.danger }}>
+                {score.total}
+              </Text>
+              <Text style={{ fontFamily: "System", fontSize: 14, color: T.muted }}>из 100</Text>
+            </View>
           </View>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <Ring pct={score.workout} color={T.primary} label="Трен." T={T} />
-            {score.tasks !== null && <Ring pct={score.tasks} color={T.success} label="Задачи" T={T} />}
-            <Ring pct={score.journal} color={T.warn} label="Дневн." T={T} />
+          <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 11, color: T.muted, marginTop: 8, letterSpacing: 1, textTransform: "uppercase" }}>WEEKLY SCORE</Text>
+        </View>
+
+        {/* Sub rings */}
+        <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
+          <View style={{ alignItems: "center" }}>
+            <View style={{ width: 50, height: 50, justifyContent: "center", alignItems: "center" }}>
+              <Svg width={50} height={50} style={{ position: "absolute" }}>
+                <Circle cx={25} cy={25} r={20} stroke={T.lo} strokeWidth={5} fill="none" />
+                <Circle cx={25} cy={25} r={20} stroke={T.primary} strokeWidth={5} fill="none" strokeDasharray={2 * Math.PI * 20} strokeDashoffset={2 * Math.PI * 20 * (1 - score.workout / 100)} strokeLinecap="round" rotation={-90} origin="25, 25" />
+              </Svg>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 14, color: T.primary }}>{score.workout}%</Text>
+            </View>
+            <Text style={{ fontFamily: "System", fontSize: 9, color: T.muted, marginTop: 2 }}>Тренировки</Text>
+          </View>
+          {score.tasks !== null && (
+            <View style={{ alignItems: "center" }}>
+              <View style={{ width: 50, height: 50, justifyContent: "center", alignItems: "center" }}>
+                <Svg width={50} height={50} style={{ position: "absolute" }}>
+                  <Circle cx={25} cy={25} r={20} stroke={T.lo} strokeWidth={5} fill="none" />
+                  <Circle cx={25} cy={25} r={20} stroke={T.success} strokeWidth={5} fill="none" strokeDasharray={2 * Math.PI * 20} strokeDashoffset={2 * Math.PI * 20 * (1 - score.tasks / 100)} strokeLinecap="round" rotation={-90} origin="25, 25" />
+                </Svg>
+                <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 14, color: T.success }}>{score.tasks}%</Text>
+              </View>
+              <Text style={{ fontFamily: "System", fontSize: 9, color: T.muted, marginTop: 2 }}>Задачи</Text>
+            </View>
+          )}
+          <View style={{ alignItems: "center" }}>
+            <View style={{ width: 50, height: 50, justifyContent: "center", alignItems: "center" }}>
+              <Svg width={50} height={50} style={{ position: "absolute" }}>
+                <Circle cx={25} cy={25} r={20} stroke={T.lo} strokeWidth={5} fill="none" />
+                <Circle cx={25} cy={25} r={20} stroke={T.warn} strokeWidth={5} fill="none" strokeDasharray={2 * Math.PI * 20} strokeDashoffset={2 * Math.PI * 20 * (1 - score.journal / 100)} strokeLinecap="round" rotation={-90} origin="25, 25" />
+              </Svg>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 14, color: T.warn }}>{score.journal}%</Text>
+            </View>
+            <Text style={{ fontFamily: "System", fontSize: 9, color: T.muted, marginTop: 2 }}>Дневник</Text>
           </View>
         </View>
-        {workoutStreak > 0 && (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 8 }}>
-            <Text style={{ fontSize: 13 }}>🔥</Text>
-            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 14, color: T.warn }}>Серия {workoutStreak} дн.</Text>
-          </View>
-        )}
-        {achievements.length > 0 && (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 6 }}>
-            <Text style={{ fontSize: 13 }}>🏆</Text>
-            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: T.warn }}>{achievements.length} достиж.</Text>
-          </View>
-        )}
+
+        {/* Streak & Achievements */}
+        <View style={{ flexDirection: "row", justifyContent: "center", gap: 16, marginTop: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: T.bord }}>
+          {workoutStreak > 0 && (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <Text style={{ fontSize: 16 }}>🔥</Text>
+              <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 14, color: T.warn }}>{workoutStreak} дней</Text>
+            </View>
+          )}
+          {achievements.length > 0 && (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <Text style={{ fontSize: 16 }}>🏆</Text>
+              <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 14, color: T.primary }}>{achievements.length}</Text>
+            </View>
+          )}
+        </View>
       </Card>
 
       {/* Daily Focus */}
@@ -582,6 +849,70 @@ function DashboardTab({ T, state, setState, onStartWorkout }: any) {
         )}
       </Card>
 
+      {(todayJournal?.mood == null || todayJournal?.energy == null) && (
+        <Card T={T} style={{ borderColor: `${T.primary}55`, backgroundColor: `${T.primary}08` }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <Text style={{ fontSize: 14 }}>⚡</Text>
+            <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 11, color: T.primary, letterSpacing: 1.2 }}>БЫСТРЫЙ ЧЕК-ИН</Text>
+            <Text style={{ fontFamily: "System", fontSize: 11, color: T.muted, marginLeft: "auto" }}>заполни оба!</Text>
+          </View>
+          <View style={{ flexDirection: "row", gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: "System", fontSize: 11, color: T.muted, marginBottom: 6 }}>Настроение</Text>
+              <View style={{ flexDirection: "row", gap: 4 }}>
+                {MOODS.map((m: any) => {
+                  const isSelected = todayJournal?.mood === m.v;
+                  return (
+                    <TouchableOpacity key={m.v} onPress={() => {
+                      setState((s: any) => {
+                        const j = [...s.journal];
+                        const existing = j.find((x: any) => x.date === TODAY);
+                        if (existing) {
+                          const idx = j.indexOf(existing);
+                          j[idx] = { ...existing, mood: m.v };
+                        } else {
+                          j.unshift({ id: uid(), date: TODAY, text: "", mood: m.v, energy: 3, createdAt: new Date().toISOString() });
+                        }
+                        return { ...s, journal: j };
+                      });
+                    }}
+                      style={{ flex: 1, height: 34, borderRadius: 7, borderColor: isSelected ? T.primary : T.bord, borderWidth: isSelected ? 2 : 1.5, backgroundColor: isSelected ? `${T.primary}20` : T.lo, justifyContent: "center", alignItems: "center" }}>
+                      <Text style={{ fontSize: 17 }}>{m.e}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: "System", fontSize: 11, color: T.muted, marginBottom: 6 }}>Энергия</Text>
+              <View style={{ flexDirection: "row", gap: 4 }}>
+                {ENERGY.map((e: any) => {
+                  const isSelected = todayJournal?.energy === e.v;
+                  return (
+                    <TouchableOpacity key={e.v} onPress={() => {
+                      setState((s: any) => {
+                        const j = [...s.journal];
+                        const existing = j.find((x: any) => x.date === TODAY);
+                        if (existing) {
+                          const idx = j.indexOf(existing);
+                          j[idx] = { ...existing, energy: e.v };
+                        } else {
+                          j.unshift({ id: uid(), date: TODAY, text: "", mood: 3, energy: e.v, createdAt: new Date().toISOString() });
+                        }
+                        return { ...s, journal: j };
+                      });
+                    }}
+                      style={{ flex: 1, height: 34, borderRadius: 7, borderColor: isSelected ? T.success : T.bord, borderWidth: isSelected ? 2 : 1.5, backgroundColor: isSelected ? `${T.success}20` : T.lo, justifyContent: "center", alignItems: "center" }}>
+                      <Text style={{ fontSize: 15 }}>{e.e}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          </View>
+        </Card>
+      )}
+
       {journal.length > 0 && (
         <Card T={T}>
           <Lbl T={T}>Настроение и энергия / 7 дней</Lbl>
@@ -671,37 +1002,154 @@ function DashboardTab({ T, state, setState, onStartWorkout }: any) {
 }
 
 /* ══════════ WORKOUT TAB ══════════ */
-function WorkoutTab({ T, session, setSession, onFinish, prs, history, onStart, onEditPlan, hasCustomPlan }: any) {
+function WorkoutTab({ T, session, setSession, onFinish, prs, history, onStart, onEditPlan, onEditHistory, hasCustomPlan }: any) {
+  const [showHist, setShowHist] = useState(false);
+  const [histSearch, setHistSearch] = useState("");
+  const [editEntry, setEditEntry] = useState<{ date: string; log: any } | null>(null);
+
+  const histEntries = Object.entries(history)
+    .filter(([, l]) => (l as any).completed)
+    .sort(([a], [b]) => (a > b ? -1 : 1));
+
+  const filteredHist = histSearch
+    ? histEntries.filter(([date, l]) => {
+        const p = PLAN.find((x) => x.id === (l as any).dayId);
+        return date.includes(histSearch) || p?.name.toLowerCase().includes(histSearch.toLowerCase());
+      })
+    : histEntries.slice(0, 20);
+
   if (!session) {
     return (
       <ScrollView style={{ padding: 14 }} contentContainerStyle={{ gap: 8 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 24, color: T.txt }}>💪 Тренировка</Text>
-          <Btn T={T} variant="muted" onPress={onEditPlan} style={{ minHeight: 36, paddingHorizontal: 12, fontSize: 12 }}>✏️ План</Btn>
+          <TouchableOpacity onPress={() => setShowHist(!showHist)} style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9, borderColor: T.bord, borderWidth: 1, backgroundColor: showHist ? `${T.primary}15` : T.lo }}>
+            <Text style={{ fontSize: 12 }}>🕐</Text>
+            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: showHist ? T.primary : T.muted }}>{showHist ? "К плану" : "История"}</Text>
+          </TouchableOpacity>
         </View>
-        {hasCustomPlan && (
-          <View style={{ padding: 8, backgroundColor: `${T.warn}10`, borderColor: `${T.warn}33`, borderWidth: 1, borderRadius: 8, marginBottom: 8, flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Text style={{ fontSize: 12 }}>⚡</Text>
-            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: T.warn }}>Кастомный план активен</Text>
-          </View>
-        )}
-        {PLAN.map((plan, i) => {
-          const log = history[fmt(weekDates()[i])]; const isToday = i === todayIdx();
-          return (
-            <Card key={i} T={T} style={{ marginBottom: 8, borderColor: isToday ? `${T.primary}55` : undefined, opacity: plan.type === "rest" ? 0.6 : 1 }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <Text style={{ fontSize: 24 }}>{plan.emoji}</Text>
-                  <View>
-                    <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 16, color: isToday ? T.primary : T.txt }}>{plan.day} — {plan.name}</Text>
-                    <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted }}>{plan.type === "rest" ? "Отдых" : `${plan.exercises?.length || 0} упр.`}</Text>
-                  </View>
-                </View>
-                {log?.completed ? <Badge color={T.success} T={T}>✓</Badge> : plan.type !== "rest" ? <Btn T={T} onPress={() => onStart(i)} style={{ minHeight: 34, paddingHorizontal: 12, fontSize: 13 }} variant={isToday ? "primary" : "muted"}>▶</Btn> : <Badge color={T.muted} T={T}>~</Badge>}
+
+        {showHist ? (
+          <>
+            <TextInput value={histSearch} onChangeText={setHistSearch} placeholder="Поиск по дате (2025-01) или названию…"
+              style={{ height: 40, borderRadius: 10, borderColor: T.bord, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 14, paddingHorizontal: 14, marginBottom: 12 }} />
+            {filteredHist.length === 0 && (
+              <View style={{ alignItems: "center", paddingVertical: 36 }}>
+                <Text style={{ fontSize: 32, opacity: 0.4 }}>🕐</Text>
+                <Text style={{ fontFamily: "System", fontSize: 14, color: T.muted, marginTop: 8 }}>{histSearch ? "Ничего не найдено" : "История пуста"}</Text>
               </View>
-            </Card>
-          );
-        })}
+            )}
+            {filteredHist.map(([date, log]: [string, any]) => {
+              const plan = PLAN.find((p) => p.id === log.dayId) || { name: "Тренировка", emoji: "💪" };
+              const dateObj = new Date(date + "T12:00:00");
+              const exCount = Object.keys(log.exercises || {}).length;
+              const totalReps = Object.values(log.exercises || {}).flat().reduce((s: number, x: any) => s + (parseInt(x.value) || 0), 0);
+              return (
+                <Card key={date} T={T} style={{ marginBottom: 8 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+                      <Text style={{ fontSize: 22 }}>{plan.emoji}</Text>
+                      <View>
+                        <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 15, color: T.txt }}>{plan.name}</Text>
+                        <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted }}>
+                          {dateObj.toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })}
+                        </Text>
+                        <View style={{ flexDirection: "row", gap: 6, marginTop: 4 }}>
+                          <Badge color={T.primary} T={T}>{exCount} упр.</Badge>
+                          {totalReps > 0 && <Badge color={T.success} T={T}>{totalReps} повт</Badge>}
+                          {log.difficulty && <Badge color={log.difficulty >= 8 ? T.danger : log.difficulty >= 5 ? T.warn : T.muted} T={T}>💪 {log.difficulty}/10</Badge>}
+                        </View>
+                      </View>
+                    </View>
+                    <TouchableOpacity onPress={() => setEditEntry({ date, log })} style={{ padding: 6 }}>
+                      <Text style={{ fontSize: 16 }}>✏️</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {log.painNotes && (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 8, padding: 6, backgroundColor: `${T.danger}10`, borderRadius: 6 }}>
+                      <Text style={{ fontSize: 12 }}>⚠️</Text>
+                      <Text style={{ fontFamily: "System", fontSize: 11, color: T.danger }} numberOfLines={1}>{log.painNotes}</Text>
+                    </View>
+                  )}
+                </Card>
+              );
+            })}
+          </>
+        ) : (
+          <>
+            {hasCustomPlan && (
+              <View style={{ padding: 8, backgroundColor: `${T.warn}10`, borderColor: `${T.warn}33`, borderWidth: 1, borderRadius: 8, marginBottom: 8, flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Text style={{ fontSize: 12 }}>⚡</Text>
+                <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: T.warn }}>Кастомный план активен</Text>
+              </View>
+            )}
+            {Object.keys(history).length > 0 && (() => {
+              const recovery = getMuscleRecovery(history);
+              const groups = [
+                { id: "upper", label: "Верх тела", icon: "💪", threshold: 48 },
+                { id: "lower", label: "Ноги", icon: "🦵", threshold: 48 },
+                { id: "core", label: "Кор", icon: "⚡", threshold: 24 },
+              ];
+              const getStatus = (days: number | null, threshold: number) => {
+                if (days === null) return { label: "Не трениров.", color: "#3D5A72", bar: 0 };
+                const hrs = days * 24;
+                if (hrs >= threshold * 2) return { label: "Полностью", color: "#00E676", bar: 100 };
+                if (hrs >= threshold) return { label: "Восстановлен", color: "#4ADE80", bar: 80 };
+                if (hrs >= threshold * 0.5) return { label: "Восстан.", color: "#FFD600", bar: 50 };
+                return { label: "Нужен отдых", color: "#FF4455", bar: 20 };
+              };
+              return (
+                <Card T={T} style={{ marginBottom: 8 }}>
+                  <Lbl T={T}>💪 Восстановление мышц</Lbl>
+                  {groups.map((g) => {
+                    const days = recovery[g.id];
+                    const st = getStatus(days, g.threshold);
+                    return (
+                      <View key={g.id} style={{ marginTop: 8 }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+                            <Text style={{ fontSize: 15 }}>{g.icon}</Text>
+                            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 14, color: T.txt }}>{g.label}</Text>
+                            {days !== null && <Text style={{ fontFamily: "System", fontSize: 11, color: T.muted }}>{days === 0 ? "сегодня" : `${days} дн. назад`}</Text>}
+                          </View>
+                          <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: st.color }}>{st.label}</Text>
+                        </View>
+                        <View style={{ height: 5, backgroundColor: T.lo, borderRadius: 3, overflow: "hidden" }}>
+                          <View style={{ height: "100%", width: `${st.bar}%`, backgroundColor: st.color, borderRadius: 3 }} />
+                        </View>
+                      </View>
+                    );
+                  })}
+                </Card>
+              );
+            })()}
+            {PLAN.map((plan, i) => {
+              const log = history[fmt(weekDates()[i])]; const isToday = i === todayIdx();
+              return (
+                <Card key={i} T={T} style={{ marginBottom: 8, borderColor: isToday ? `${T.primary}55` : undefined, opacity: plan.type === "rest" ? 0.6 : 1 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                      <Text style={{ fontSize: 24 }}>{plan.emoji}</Text>
+                      <View>
+                        <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 16, color: isToday ? T.primary : T.txt }}>{plan.day} — {plan.name}</Text>
+                        <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted }}>{plan.type === "rest" ? "Отдых" : `${plan.exercises?.length || 0} упр.`}</Text>
+                      </View>
+                    </View>
+                    {log?.completed ? (
+                      <View style={{ flexDirection: "row", gap: 6 }}>
+                        <TouchableOpacity onPress={() => setEditEntry({ date: fmt(weekDates()[i]), log })} style={{ padding: 4 }}>
+                          <Text style={{ fontSize: 14 }}>✏️</Text>
+                        </TouchableOpacity>
+                        <Badge color={T.success} T={T}>✓</Badge>
+                      </View>
+                    ) : plan.type !== "rest" ? <Btn T={T} onPress={() => onStart(i)} style={{ minHeight: 34, paddingHorizontal: 12, fontSize: 13 }} variant={isToday ? "primary" : "muted"}>▶</Btn> : <Badge color={T.muted} T={T}>~</Badge>}
+                  </View>
+                </Card>
+              );
+            })}
+          </>
+        )}
+        {editEntry && <EditWorkoutModal T={T} date={editEntry.date} log={editEntry.log} onSave={onEditHistory} onClose={() => setEditEntry(null)} />}
       </ScrollView>
     );
   }
@@ -715,7 +1163,7 @@ function WorkoutTab({ T, session, setSession, onFinish, prs, history, onStart, o
   const totalSets = Object.values(session.exerciseLogs).flat().length;
 
   return (
-    <ScrollView style={{ padding: 14 }} contentContainerStyle={{ gap: 10 }}>
+    <ScrollView style={{ padding: 14 }} contentContainerStyle={{ gap: 10, paddingBottom: 33 }}>
       {session.showRest && <RestTimer T={T} onDone={() => upd({ showRest: false })} />}
       {session.phase === "warmup" && (
         <>
@@ -842,7 +1290,7 @@ function TasksGoalsTab({ T, tasks, setTasks, goals, setGoals }: any) {
           </TouchableOpacity>
         ))}
       </View>
-      <ScrollView style={{ padding: 14 }}>
+      <ScrollView style={{ flex: 1, padding: 14 }} contentContainerStyle={{ paddingBottom: 33 }}>
         {sub === "tasks" && (
           <>
             <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 14 }}>
@@ -1031,6 +1479,15 @@ function TasksGoalsTab({ T, tasks, setTasks, goals, setGoals }: any) {
                       <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 20, color: T.muted }}>+</Text>
                     </TouchableOpacity>
                   </View>
+                  {g.history && g.history.length >= 2 && (() => {
+                    const forecast = goalForecast(g);
+                    if (!forecast) return null;
+                    return (
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: T.bord }}>
+                        <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted }}>📅 Прогноз: {forecast.daysNeeded} дн. → {forecast.date}</Text>
+                      </View>
+                    );
+            })()}
                 </Card>
               );
             })}
@@ -1069,8 +1526,12 @@ function JournalBodyTab({ T, journal, setJournal, bodyLog, setBodyLog, reflectio
   const [jEnergy, setJEnergy] = useState(3);
   const [jSleep, setJSleep] = useState(7);
   const [addBody, setAddBody] = useState(false);
-  const [bodyForm, setBodyForm] = useState({ weight: "", chest: "", waist: "", arms: "" });
+  const [bodyForm, setBodyForm] = useState({ weight: "", chest: "", waist: "", arms: "", height: "", hips: "" });
   const [searchQuery, setSearchQuery] = useState("");
+  const [addPain, setAddPain] = useState(false);
+  const [painForm, setPainForm] = useState({ zone: "", isRight: true, intensity: 3, note: "" });
+  const [addReflection, setAddReflection] = useState(false);
+  const [refForm, setRefForm] = useState({ went: "", improve: "", grat: "" });
 
   const saveJournal = () => {
     if (!jText.trim()) return;
@@ -1079,10 +1540,24 @@ function JournalBodyTab({ T, journal, setJournal, bodyLog, setBodyLog, reflectio
   };
 
   const saveBody = () => {
-    if (!bodyForm.weight && !bodyForm.chest && !bodyForm.waist && !bodyForm.arms) return;
+    if (!bodyForm.weight && !bodyForm.chest && !bodyForm.waist && !bodyForm.arms && !bodyForm.height && !bodyForm.hips) return;
     setBodyLog((l: any) => [{ id: uid(), date: TODAY, ...bodyForm }, ...l]);
-    setBodyForm({ weight: "", chest: "", waist: "", arms: "" });
+    setBodyForm({ weight: "", chest: "", waist: "", arms: "", height: "", hips: "" });
     setAddBody(false);
+  };
+
+  const savePain = () => {
+    if (!painForm.zone) return;
+    setPainLog((l: any) => [{ id: uid(), date: TODAY, ...painForm }, ...(l || [])]);
+    setPainForm({ zone: "", isRight: true, intensity: 3, note: "" });
+    setAddPain(false);
+  };
+
+  const saveReflection = () => {
+    if (!refForm.went.trim() && !refForm.improve.trim() && !refForm.grat.trim()) return;
+    setReflections((r: any) => [{ id: uid(), date: TODAY, ...refForm }, ...r]);
+    setRefForm({ went: "", improve: "", grat: "" });
+    setAddReflection(false);
   };
 
   return (
@@ -1094,7 +1569,7 @@ function JournalBodyTab({ T, journal, setJournal, bodyLog, setBodyLog, reflectio
           </TouchableOpacity>
         ))}
       </View>
-      <ScrollView style={{ padding: 14 }}>
+      <ScrollView style={{ flex: 1, padding: 14 }} contentContainerStyle={{ paddingBottom: 33 }}>
         {sub === "journal" && (
           <>
             <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 12 }}>
@@ -1204,7 +1679,7 @@ function JournalBodyTab({ T, journal, setJournal, bodyLog, setBodyLog, reflectio
               <Card T={T} style={{ marginBottom: 12, borderColor: `${T.primary}44` }}>
                 <Lbl T={T}>Новые замеры</Lbl>
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8, marginBottom: 12 }}>
-                  {[["weight", "⚖️ Вес (кг)", "70"], ["chest", "📏 Грудь (см)", "90"], ["waist", "📏 Талия (см)", "80"], ["arms", "💪 Бицепс (см)", "30"]].map(([k, l, ph]) => (
+                  {[["weight", "⚖️ Вес (кг)", "70"], ["chest", "📏 Грудь (см)", "90"], ["waist", "📏 Талия (см)", "80"], ["arms", "💪 Бицепс (см)", "30"], ["height", "📏 Рост (см)", "170"], ["hips", "📏 Бёдра (см)", "95"]].map(([k, l, ph]) => (
                     <View key={k} style={{ flex: 1, minWidth: "45%" }}>
                       <Lbl T={T}>{l}</Lbl>
                       <TextInput keyboardType="numeric" value={bodyForm[k as keyof typeof bodyForm]} onChangeText={(t) => setBodyForm((f) => ({ ...f, [k]: t }))} placeholder={ph} placeholderTextColor={T.muted}
@@ -1256,6 +1731,36 @@ function JournalBodyTab({ T, journal, setJournal, bodyLog, setBodyLog, reflectio
                 })()}
               </Card>
             )}
+            {bodyLog.length > 0 && (() => {
+              const latest = bodyLog[0];
+              const w = parseFloat(latest.weight);
+              const h = parseFloat(latest.height);
+              if (!w || !h) return null;
+              const bmi = (w / Math.pow(h / 100, 2)).toFixed(1);
+              const bmiNum = parseFloat(bmi);
+              const bmiLabel = bmiNum < 18.5 ? "Недостаточный" : bmiNum < 25 ? "Норма" : bmiNum < 30 ? "Избыток" : "Ожирение";
+              const bmiColor = bmiNum < 18.5 ? T.warn : bmiNum < 25 ? T.success : bmiNum < 30 ? T.warn : "#e74c3c";
+              return (
+                <Card T={T} style={{ marginBottom: 12, borderColor: `${bmiColor}44` }}>
+                  <Lbl T={T}>ИМТ (Индекс массы тела)</Lbl>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginTop: 8 }}>
+                    <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 36, color: bmiColor }}>{bmi}</Text>
+                    <View>
+                      <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 15, color: bmiColor }}>{bmiLabel}</Text>
+                      <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted }}>{w} кг / {h} см</Text>
+                    </View>
+                  </View>
+                  <View style={{ height: 10, backgroundColor: T.lo, borderRadius: 5, marginTop: 10, overflow: "hidden" }}>
+                    <View style={{ width: `${Math.min((bmiNum / 35) * 100, 100)}%`, height: "100%", backgroundColor: bmiColor, borderRadius: 5 }} />
+                  </View>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 4 }}>
+                    <Text style={{ fontFamily: "System", fontSize: 10, color: T.muted }}>18.5</Text>
+                    <Text style={{ fontFamily: "System", fontSize: 10, color: T.muted }}>25</Text>
+                    <Text style={{ fontFamily: "System", fontSize: 10, color: T.muted }}>30</Text>
+                  </View>
+                </Card>
+              );
+            })()}
             {bodyLog.length === 0 && !addBody && <View style={{ alignItems: "center", paddingVertical: 40 }}><Text style={{ fontSize: 40, marginBottom: 10 }}>⚖️</Text><Text style={{ fontFamily: "System", fontSize: 14, color: T.muted }}>Начни отслеживать тело</Text></View>}
             {bodyLog.slice(0, 10).map((entry: any) => (
               <Card key={entry.id} T={T} style={{ marginBottom: 8 }}>
@@ -1268,6 +1773,8 @@ function JournalBodyTab({ T, journal, setJournal, bodyLog, setBodyLog, reflectio
                   {entry.chest && <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 15, color: T.success }}>📏 {entry.chest} (грудь)</Text>}
                   {entry.waist && <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 15, color: T.warn }}>📏 {entry.waist} (талия)</Text>}
                   {entry.arms && <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 15, color: T.muted }}>💪 {entry.arms} (бицепс)</Text>}
+                  {entry.height && <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 15, color: T.primary }}>📏 {entry.height} (рост)</Text>}
+                  {entry.hips && <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 15, color: T.success }}>📏 {entry.hips} (бёдра)</Text>}
                 </View>
               </Card>
             ))}
@@ -1275,9 +1782,49 @@ function JournalBodyTab({ T, journal, setJournal, bodyLog, setBodyLog, reflectio
         )}
         {sub === "pain" && (
           <>
-            <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 22, color: T.txt, marginBottom: 4 }}>Боль и асимметрия</Text>
-            <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted, marginBottom: 14 }}>Отслеживай паттерны — предотвращай травмы</Text>
-            {painLog?.length === 0 && <View style={{ alignItems: "center", paddingVertical: 36 }}><Text style={{ fontSize: 40, marginBottom: 10 }}>🩺</Text><Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 16, color: T.txt, marginBottom: 6 }}>Журнал болей пуст</Text></View>}
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 22, color: T.txt }}>Боль и асимметрия</Text>
+              <Btn T={T} onPress={() => setAddPain(!addPain)} style={{ minHeight: 36, paddingHorizontal: 14, fontSize: 13 }}>{addPain ? "Закрыть" : "+ Боль"}</Btn>
+            </View>
+            <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted, marginBottom: 12 }}>Отслеживай паттерны — предотвращай травмы</Text>
+            {addPain && (
+              <Card T={T} style={{ marginBottom: 12, borderColor: `${T.danger}44` }}>
+                <Lbl T={T}>Где болит?</Lbl>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8, marginBottom: 12 }}>
+                  {PAIN_ZONES.map((z) => (
+                    <TouchableOpacity key={z.id} onPress={() => setPainForm((f: any) => ({ ...f, zone: z.id }))}
+                      style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderColor: painForm.zone === z.id ? T.danger : T.bord, borderWidth: painForm.zone === z.id ? 2 : 1.5, backgroundColor: painForm.zone === z.id ? `${T.danger}15` : T.lo, flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <Text style={{ fontSize: 14 }}>{z.emoji}</Text>
+                      <Text style={{ fontFamily: "System", fontWeight: "600", fontSize: 12, color: painForm.zone === z.id ? T.danger : T.txt }}>{z.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
+                  <TouchableOpacity onPress={() => setPainForm((f: any) => ({ ...f, isRight: true }))} style={{ flex: 1, padding: 10, borderRadius: 8, borderColor: painForm.isRight ? T.primary : T.bord, borderWidth: painForm.isRight ? 2 : 1.5, backgroundColor: painForm.isRight ? `${T.primary}15` : T.lo, alignItems: "center" }}>
+                    <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 14, color: painForm.isRight ? T.primary : T.muted }}>Правая</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setPainForm((f: any) => ({ ...f, isRight: false }))} style={{ flex: 1, padding: 10, borderRadius: 8, borderColor: !painForm.isRight ? T.primary : T.bord, borderWidth: !painForm.isRight ? 2 : 1.5, backgroundColor: !painForm.isRight ? `${T.primary}15` : T.lo, alignItems: "center" }}>
+                    <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 14, color: !painForm.isRight ? T.primary : T.muted }}>Левая</Text>
+                  </TouchableOpacity>
+                </View>
+                <Lbl T={T}>Интенсивность</Lbl>
+                <View style={{ flexDirection: "row", gap: 6, marginTop: 8, marginBottom: 12 }}>
+                  {PAIN_INTENSITY.map((p) => (
+                    <TouchableOpacity key={p.v} onPress={() => setPainForm((f: any) => ({ ...f, intensity: p.v }))}
+                      style={{ flex: 1, padding: 8, borderRadius: 8, borderColor: painForm.intensity === p.v ? p.c : T.bord, borderWidth: painForm.intensity === p.v ? 2 : 1.5, backgroundColor: painForm.intensity === p.v ? `${p.c}15` : T.lo, alignItems: "center" }}>
+                      <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 11, color: painForm.intensity === p.v ? p.c : T.muted }}>{p.l}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <TextInput value={painForm.note} onChangeText={(t) => setPainForm((f: any) => ({ ...f, note: t }))} placeholder="Заметка (опц.)" placeholderTextColor={T.muted}
+                  style={{ borderRadius: 8, borderColor: T.bord, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 14, padding: 10, marginBottom: 10 }} />
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <Btn T={T} variant="muted" onPress={() => setAddPain(false)} style={{ flex: 1 }}>Отмена</Btn>
+                  <Btn T={T} onPress={savePain} style={{ flex: 2 }}>Сохранить</Btn>
+                </View>
+              </Card>
+            )}
+            {painLog?.length === 0 && !addPain && <View style={{ alignItems: "center", paddingVertical: 36 }}><Text style={{ fontSize: 40, marginBottom: 10 }}>🩺</Text><Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 16, color: T.txt, marginBottom: 6 }}>Журнал болей пуст</Text></View>}
             {painLog?.slice(0, 20).map((entry: any) => {
               const zone = PAIN_ZONES.find((z) => z.id === entry.zone); const intensity = PAIN_INTENSITY.find((p) => p.v === entry.intensity);
               return (
@@ -1296,15 +1843,35 @@ function JournalBodyTab({ T, journal, setJournal, bodyLog, setBodyLog, reflectio
         )}
         {sub === "reflection" && (
           <>
-            <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 22, color: T.txt, marginBottom: 4 }}>Еженедельная рефлексия</Text>
-            <Text style={{ fontFamily: "System", fontSize: 13, color: T.muted, marginBottom: 14 }}>Воскресный чек-ин — ключ к настоящему росту</Text>
-            {reflections.length === 0 && <View style={{ alignItems: "center", paddingVertical: 36 }}><Text style={{ fontSize: 40, marginBottom: 10 }}>🧘</Text><Text style={{ fontFamily: "System", fontSize: 14, color: T.muted }}>Заполни первую рефлексию</Text></View>}
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 22, color: T.txt }}>Еженедельная рефлексия</Text>
+              <Btn T={T} onPress={() => setAddReflection(!addReflection)} style={{ minHeight: 36, paddingHorizontal: 14, fontSize: 13 }}>{addReflection ? "Закрыть" : "+ Записать"}</Btn>
+            </View>
+            <Text style={{ fontFamily: "System", fontSize: 13, color: T.muted, marginBottom: 12 }}>Воскресный чек-ин — ключ к настоящему росту</Text>
+            {addReflection && (
+              <Card T={T} style={{ marginBottom: 12, borderColor: `${T.success}44` }}>
+                <Lbl T={T}>✅ Что получилось?</Lbl>
+                <TextInput value={refForm.went} onChangeText={(t) => setRefForm((f: any) => ({ ...f, went: t }))} placeholder="Напиши 1-3 вещи, которые удались..." placeholderTextColor={T.muted} multiline
+                  style={{ borderRadius: 8, borderColor: T.bord, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 14, padding: 10, minHeight: 60, marginTop: 6, marginBottom: 12 }} />
+                <Lbl T={T}>🔄 Что улучшить?</Lbl>
+                <TextInput value={refForm.improve} onChangeText={(t) => setRefForm((f: any) => ({ ...f, improve: t }))} placeholder="Что можно сделать лучше на след. неделе?" placeholderTextColor={T.muted} multiline
+                  style={{ borderRadius: 8, borderColor: T.bord, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 14, padding: 10, minHeight: 60, marginTop: 6, marginBottom: 12 }} />
+                <Lbl T={T}>🎯 Фокус на неделю</Lbl>
+                <TextInput value={refForm.grat} onChangeText={(t) => setRefForm((f: any) => ({ ...f, grat: t }))} placeholder="Главная цель на следующую неделю..." placeholderTextColor={T.muted} multiline
+                  style={{ borderRadius: 8, borderColor: T.bord, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 14, padding: 10, minHeight: 60, marginTop: 6, marginBottom: 12 }} />
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <Btn T={T} variant="muted" onPress={() => setAddReflection(false)} style={{ flex: 1 }}>Отмена</Btn>
+                  <Btn T={T} onPress={saveReflection} style={{ flex: 2 }}>Сохранить</Btn>
+                </View>
+              </Card>
+            )}
+            {reflections.length === 0 && !addReflection && <View style={{ alignItems: "center", paddingVertical: 36 }}><Text style={{ fontSize: 40, marginBottom: 10 }}>🧘</Text><Text style={{ fontFamily: "System", fontSize: 14, color: T.muted }}>Заполни первую рефлексию</Text></View>}
             {reflections.map((r: any) => (
               <Card key={r.id} T={T} style={{ marginBottom: 10, borderLeftWidth: 3, borderLeftColor: T.success }}>
                 <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: T.muted, marginBottom: 10 }}>{new Date(r.date + "T12:00:00").toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })}</Text>
                 {r.went && <View style={{ marginBottom: 8 }}><Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 11, color: T.success, letterSpacing: 1, marginBottom: 3 }}>✅ ПОЛУЧИЛОСЬ</Text><Text style={{ fontFamily: "System", fontSize: 13, color: T.txt, lineHeight: 20 }}>{r.went}</Text></View>}
-                {r.didnt && <View style={{ marginBottom: 8 }}><Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 11, color: T.warn, letterSpacing: 1, marginBottom: 3 }}>🔄 УЛУЧШИТЬ</Text><Text style={{ fontFamily: "System", fontSize: 13, color: T.txt, lineHeight: 20 }}>{r.didnt}</Text></View>}
-                {r.focus && <View><Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 11, color: T.primary, letterSpacing: 1, marginBottom: 3 }}>🎯 ФОКУС</Text><Text style={{ fontFamily: "System", fontSize: 13, color: T.txt, lineHeight: 20 }}>{r.focus}</Text></View>}
+                {r.improve && <View style={{ marginBottom: 8 }}><Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 11, color: T.warn, letterSpacing: 1, marginBottom: 3 }}>🔄 УЛУЧШИТЬ</Text><Text style={{ fontFamily: "System", fontSize: 13, color: T.txt, lineHeight: 20 }}>{r.improve}</Text></View>}
+                {r.grat && <View><Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 11, color: T.primary, letterSpacing: 1, marginBottom: 3 }}>🎯 ФОКУС</Text><Text style={{ fontFamily: "System", fontSize: 13, color: T.txt, lineHeight: 20 }}>{r.grat}</Text></View>}
               </Card>
             ))}
           </>
@@ -1414,6 +1981,9 @@ function MentorTab({ T, state, setState }: any) {
                 <Text style={{ fontSize: 16, color: T.muted }}>🗑</Text>
               </TouchableOpacity>
             )}
+            <TouchableOpacity onPress={() => Alert.alert("Контекст ИИ", buildAIContext(state).slice(0, 500) + "...")}>
+              <Text style={{ fontSize: 16, color: T.muted }}>📋</Text>
+            </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowSettings(true)}>
               <Text style={{ fontSize: 18, color: T.muted }}>⚙️</Text>
             </TouchableOpacity>
@@ -1663,20 +2233,30 @@ function AISettingsModal({ T, aiConfig, onSave, onClose }: any) {
 }
 
 /* ══════════ STATS TAB ══════════ */
-function StatsTab({ T, history, tasks, goals, journal, achievements, user, setState }: any) {
+const StatsTab = React.memo(function StatsTab({ T, history, tasks, goals, journal, achievements, user, setState }: any) {
   const [sub, setSub] = useState("stats");
   const [selEx, setSelEx] = useState("pushups");
-  const prs = getPRs(history);
-  const trend = require("./src/utils/helpers").exerciseTrend(history, selEx);
-  const totalW = Object.values(history).filter((l: any) => l.completed).length;
-  const streak = calcStreak(history);
-  const auto1RM = require("./src/utils/helpers").computeAuto1RM(history);
-  const alerts = getAllProgressionSuggestions(history);
+  const [trendSelIdx, setTrendSelIdx] = useState<number | null>(null);
+  const [tonnageSelIdx, setTonnageSelIdx] = useState<number | null>(null);
+  
+  const prs = useMemo(() => getPRs(history), [history]);
+  const streak = useMemo(() => calcStreak(history), [history]);
+  const totalW = useMemo(() => Object.values(history).filter((l: any) => l.completed).length, [history]);
+  const avgDiff = useMemo(() => totalW > 0 ? (Object.values(history).reduce((s: number, l: any) => s + (l.difficulty || 5), 0) / totalW).toFixed(1) : "—", [history, totalW]);
+  const avgSleep = useMemo(() => journal.length > 0 ? (journal.reduce((s: number, j: any) => s + (j.sleep || 0), 0) / journal.filter((j: any) => j.sleep > 0).length).toFixed(1) : "—", [journal]);
+  const alerts = useMemo(() => getAllProgressionSuggestions(history), [history]);
+  const trackedEx = useMemo(() => PLAN.flatMap((d) => d.exercises || []).reduce((a: any[], e) => { if (!a.find((x) => x.id === e.id)) a.push(e); return a; }, []), []);
   const earned = achievements || [];
-  const notEarned = ACHIEVEMENT_DEFS.filter((a) => !earned.includes(a.id));
-  const trackedEx = PLAN.flatMap((d) => d.exercises || []).reduce((a: any[], e) => { if (!a.find((x) => x.id === e.id)) a.push(e); return a; }, []);
-  const avgDiff = totalW > 0 ? (Object.values(history).reduce((s: number, l: any) => s + (l.difficulty || 5), 0) / totalW).toFixed(1) : "—";
-  const avgSleep = journal.length > 0 ? (journal.reduce((s: number, j: any) => s + (j.sleep || 0), 0) / journal.filter((j: any) => j.sleep > 0).length).toFixed(1) : "—";
+  const notEarned = useMemo(() => ACHIEVEMENT_DEFS.filter((a) => !earned.includes(a.id)), [earned]);
+  const score = useMemo(() => calcLifeScore(history, tasks, journal), [history, tasks, journal]);
+  
+  const trend = useMemo(() => exerciseTrend(history, selEx), [history, selEx]);
+  const auto1RM = useMemo(() => computeAuto1RM(history), [history]);
+  const wStats = useMemo(() => weeklyWorkoutStats(history), [history]);
+  const wTonnage = useMemo(() => weeklyTonnage(history), [history]);
+  const corr = useMemo(() => moodWorkoutCorrelation(history, journal), [history, journal]);
+  const maxCount = useMemo(() => Math.max(...wStats.map((w: any) => w.count), 1), [wStats]);
+  const maxT = useMemo(() => Math.max(...wTonnage.map((w: any) => w.tonnage), 1), [wTonnage]);
 
   return (
     <View style={{ flex: 1 }}>
@@ -1687,7 +2267,7 @@ function StatsTab({ T, history, tasks, goals, journal, achievements, user, setSt
           </TouchableOpacity>
         ))}
       </View>
-      <ScrollView style={{ padding: 14 }}>
+      <ScrollView style={{ flex: 1, padding: 14 }} contentContainerStyle={{ paddingBottom: 33 }}>
         {sub === "stats" && (
           <>
             <View style={{ flexDirection: "row", gap: 7, marginBottom: 14 }}>
@@ -1723,59 +2303,59 @@ function StatsTab({ T, history, tasks, goals, journal, achievements, user, setSt
                   );
                 })}
               </View>
-              {trend.length > 1 ? (
-                <View style={{ marginTop: 4 }}>
-                  <Svg height="120" width="100%">
-                    {(() => {
-                      const max = Math.max(...trend.map((t: any) => t.val), 1);
-                      const w = 300; const h = 100;
-                      const prVal = prs[selEx] || 0;
-                      const pts = trend.map((d: any, i: number) => `${(i / Math.max(trend.length - 1, 1)) * w},${h - (d.val / max) * (h - 10)}`).join(" ");
-                      const areaPts = `0,${h} ${pts} ${w},${h}`;
-                      const last3 = trend.slice(-3);
-                      const goingUp = last3.length >= 2 && last3[last3.length - 1].val >= last3[0].val;
-                      return (
-                        <>
-                          <Defs>
-                            <LinearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
-                              <Stop offset="0" stopColor={T.success} stopOpacity="0.3" />
-                              <Stop offset="1" stopColor={T.success} stopOpacity="0" />
-                            </LinearGradient>
-                          </Defs>
-                          <Polygon points={areaPts} fill="url(#grad)" />
-                          {prVal > 0 && (
-                            <Line x1="0" y1={h - (prVal / max) * (h - 10)} x2={w} y2={h - (prVal / max) * (h - 10)} stroke={T.warn} strokeWidth="1.5" strokeDasharray="6,4" />
-                          )}
-                          <Polyline points={pts} fill="none" stroke={T.success} strokeWidth="2.5" strokeLinejoin="round" />
-                          {trend.map((d: any, i: number) => {
-                            const cx = (i / Math.max(trend.length - 1, 1)) * w;
-                            const cy = h - (d.val / max) * (h - 10);
-                            return (
-                          <G key={i}>
-                                <Circle cx={cx} cy={cy} r="4" fill={T.success} stroke={T.card} strokeWidth="2" />
-                                <SvgText x={cx} y={cy - 10} textAnchor="middle" fill={T.success} fontSize="10" fontWeight="700">{d.val}</SvgText>
-                                <SvgText x={cx} y={h + 14} textAnchor="middle" fill={T.muted} fontSize="8">{d.date}</SvgText>
-                          </G>
-                            );
-                          })}
-                        </>
-                      );
-                    })()}
-                  </Svg>
-                  {(() => {
-                    const last3 = trend.slice(-3);
-                    if (last3.length >= 2) {
-                      const goingUp = last3[last3.length - 1].val >= last3[0].val;
-                      return (
+              {trend.length > 1 ? (() => {
+                  const max = Math.max(...trend.map((t: any) => t.val), 1);
+                  const w = 300; const h = 100;
+                  const prVal = prs[selEx] || 0;
+                  const pts = trend.map((d: any, i: number) => `${(i / Math.max(trend.length - 1, 1)) * w},${h - (d.val / max) * (h - 10)}`).join(" ");
+                  const areaPts = `0,${h} ${pts} ${w},${h}`;
+                  const last3 = trend.slice(-3);
+                  const goingUp = last3.length >= 2 && last3[last3.length - 1].val >= last3[0].val;
+                  return (
+                    <View style={{ marginTop: 4 }}>
+                      {trendSelIdx !== null && (
+                        <View style={{ backgroundColor: T.lo, borderRadius: 8, padding: 8, marginBottom: 8, flexDirection: "row", justifyContent: "space-between" }}>
+                          <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: T.txt }}>{trend[trendSelIdx]?.date}</Text>
+                          <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: T.success }}>{trend[trendSelIdx]?.val} повт</Text>
+                        </View>
+                      )}
+                      <Svg height="140" width="100%" viewBox="0 0 300 125">
+                        <Defs>
+                          <LinearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
+                            <Stop offset="0" stopColor={T.success} stopOpacity="0.3" />
+                            <Stop offset="1" stopColor={T.success} stopOpacity="0" />
+                          </LinearGradient>
+                        </Defs>
+                        <Polygon points={areaPts} fill="url(#grad)" />
+                        {prVal > 0 && (
+                          <Line x1="0" y1={h - (prVal / max) * (h - 10)} x2={w} y2={h - (prVal / max) * (h - 10)} stroke={T.warn} strokeWidth="1.5" strokeDasharray="6,4" />
+                        )}
+                        <Polyline points={pts} fill="none" stroke={T.success} strokeWidth="2.5" strokeLinejoin="round" />
+                        {trend.map((d: any, i: number) => {
+                          const cx = (i / Math.max(trend.length - 1, 1)) * w;
+                          const cy = h - (d.val / max) * (h - 10);
+                          const isSel = trendSelIdx === i;
+                          return (
+                            <G key={i}>
+                              <Circle cx={cx} cy={cy} r={isSel ? 7 : 4} fill={isSel ? T.success : T.surf} stroke={T.success} strokeWidth={isSel ? 3 : 2} />
+                              <SvgText x={cx} y={h + 12} textAnchor="middle" fill={isSel ? T.success : T.muted} fontSize="8" fontWeight={isSel ? "700" : "400"}>{d.date}</SvgText>
+                              <Rect x={cx - 18} y={cy - 20} width={36} height={16} fill={T.success} rx={4} onPress={() => setTrendSelIdx(isSel ? null : i)} />
+                              <SvgText x={cx} y={cy - 8} textAnchor="middle" fill="#000" fontSize="10" fontWeight="700" onPress={() => setTrendSelIdx(isSel ? null : i)}>{d.val}</SvgText>
+                            </G>
+                          );
+                        })}
+                      </Svg>
+                      <Text style={{ fontFamily: "System", fontSize: 11, color: T.muted, textAlign: "center", marginTop: 4 }}>Тапни на точку для деталей</Text>
+                      {last3.length >= 2 && (
                         <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: goingUp ? T.success : T.danger, textAlign: "center", marginTop: 4 }}>
                           {goingUp ? "📈 Растёт!" : "📉 Снижение"}
                         </Text>
-                      );
-                    }
-                    return null;
-                  })()}
-                </View>
-              ) : <Text style={{ fontFamily: "System", fontSize: 13, color: T.muted, textAlign: "center", paddingVertical: 20 }}>Нужно минимум 2 записи</Text>}
+                      )}
+                    </View>
+                  );
+                })() : (
+                <Text style={{ fontFamily: "System", fontSize: 13, color: T.muted, textAlign: "center", paddingVertical: 20 }}>Нужно минимум 2 записи</Text>
+              )}
             </Card>
             {Object.keys(prs).length > 0 && (
               <Card T={T} style={{ marginBottom: 14 }}>
@@ -1799,8 +2379,7 @@ function StatsTab({ T, history, tasks, goals, journal, achievements, user, setSt
             )}
 
             {/* Life Balance Radar Chart */}
-            {(() => {
-              const score = calcLifeScore(history, tasks, journal);
+            {useMemo(() => {
               const vals = [
                 { label: "Трен.", value: score.workout },
                 { label: "Задачи", value: score.tasks ?? 0 },
@@ -1829,72 +2408,57 @@ function StatsTab({ T, history, tasks, goals, journal, achievements, user, setSt
               return (
                 <Card T={T} style={{ marginBottom: 14 }}>
                   <Lbl T={T}>🕸 Баланс жизни</Lbl>
-                  <Svg height="200" width="100%" viewBox="0 0 200 180">
+                  <Svg height="200" width="100%" viewBox="0 0 200 200">
                     {gridPts.map((pts, li) => (
-                      <Polygon key={li} points={pts.map((p) => `${p.x},${p.y}`).join(" ")} fill="none" stroke={T.bord} strokeWidth="0.8" />
+                      <Polygon key={`g${li}`} points={pts.map((p) => `${p.x},${p.y}`).join(" ")} fill="none" stroke={T.bord} strokeWidth="0.8" />
                     ))}
                     {Array.from({ length: axes }, (_, i) => {
                       const angle = (i / axes) * Math.PI * 2;
                       const end = getPoint(angle, 1);
-                      return <Line key={i} x1={cx} y1={cy} x2={end.x} y2={end.y} stroke={T.bord} strokeWidth="0.8" />;
+                      return <Line key={`a${i}`} x1={cx} y1={cy} x2={end.x} y2={end.y} stroke={T.bord} strokeWidth="0.8" />;
                     })}
                     <Polygon points={polyStr} fill={`${T.primary}30`} stroke={T.primary} strokeWidth="2" />
                     {dataPts.map((p, i) => (
-                      <G key={i}>
+                      <G key={`d${i}`}>
                         <Circle cx={p.x} cy={p.y} r="3.5" fill={T.primary} stroke={T.card} strokeWidth="1.5" />
                         <SvgText x={p.x} y={p.y - 8} textAnchor="middle" fill={T.primary} fontSize="9" fontWeight="700">{vals[i].value}</SvgText>
                       </G>
                     ))}
-                    {vals.map((v, i) => {
-                      const angle = (i / axes) * Math.PI * 2;
-                      const labelPt = getPoint(angle, 1.18);
-                      return <SvgText key={i} x={labelPt.x} y={labelPt.y} textAnchor="middle" fill={T.muted} fontSize="9">{v.label}</SvgText>;
-                    })}
                   </Svg>
                 </Card>
               );
-            })()}
+            }, [score.workout, score.tasks, score.journal, streak, goals, T.primary, T.bord, T.card])}
 
             {/* Weekly Workouts Bar Chart */}
-            {(() => {
-              const wStats = weeklyWorkoutStats(history);
-              const maxCount = Math.max(...wStats.map((w: any) => w.count), 1);
-              const barW = 28; const barGap = 8; const chartW = wStats.length * (barW + barGap);
-              const chartH = 100;
-              return (
-                <Card T={T} style={{ marginBottom: 14 }}>
-                  <Lbl T={T}>📊 Тренировки по неделям</Lbl>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
-                    <Svg height={chartH + 30} width={chartW + 20}>
-                      {wStats.map((w: any, i: number) => {
-                        const x = 10 + i * (barW + barGap);
-                        const h = (w.count / maxCount) * (chartH - 20);
-                        return (
-                          <G key={i}>
-                            <Rect x={x} y={chartH - h - 15} width={barW} height={h} rx="4" fill={w.count > 0 ? T.primary : T.lo} />
-                            <SvgText x={x + barW / 2} y={chartH - h - 18} textAnchor="middle" fill={w.count > 0 ? T.primary : T.muted} fontSize="10" fontWeight="700">{w.count}</SvgText>
-                            <SvgText x={x + barW / 2} y={chartH + 5} textAnchor="middle" fill={T.muted} fontSize="8">{w.week}</SvgText>
-                          </G>
-                        );
-                      })}
-                    </Svg>
-                  </ScrollView>
-                </Card>
-              );
-            })()}
+            <Card T={T} style={{ marginBottom: 14 }}>
+              <Lbl T={T}>📊 Тренировки по неделям</Lbl>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                <View style={{ flexDirection: "row", gap: 8, paddingRight: 20 }}>
+                  {wStats.map((w: any, i: number) => (
+                    <View key={i} style={{ alignItems: "center", minWidth: 40 }}>
+                      <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 16, color: w.count > 0 ? T.primary : T.muted }}>{w.count}</Text>
+                      <Text style={{ fontFamily: "System", fontSize: 10, color: T.muted, marginTop: 2 }}>{w.week}</Text>
+                    </View>
+                  ))}
+                </View>
+              </ScrollView>
+            </Card>
 
             {/* Weekly Tonnage Area Chart */}
-            {(() => {
-              const wTonnage = weeklyTonnage(history);
-              if (!wTonnage || wTonnage.length === 0) return null;
-              const maxT = Math.max(...wTonnage.map((w: any) => w.tonnage), 1);
-              const w = 300; const h = 80;
-              const pts = wTonnage.map((d: any, i: number) => `${(i / Math.max(wTonnage.length - 1, 1)) * w},${h - (d.tonnage / maxT) * (h - 10)}`).join(" ");
+            {wTonnage.length > 0 && (() => {
+              const w = 300; const h = 100;
+              const pts = wTonnage.map((d: any, i: number) => `${(i / Math.max(wTonnage.length - 1, 1)) * w},${h - (d.tonnage / maxT) * (h - 15)}`).join(" ");
               const areaPts = `0,${h} ${pts} ${w},${h}`;
               return (
                 <Card T={T} style={{ marginBottom: 14 }}>
                   <Lbl T={T}>📈 Недельный тоннаж</Lbl>
-                  <Svg height={h + 30} width="100%" viewBox={`0 0 ${w} ${h + 30}`}>
+                  {tonnageSelIdx !== null && (
+                    <View style={{ backgroundColor: T.lo, borderRadius: 8, padding: 8, marginTop: 8, marginBottom: 8, flexDirection: "row", justifyContent: "space-between" }}>
+                      <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: T.txt }}>{wTonnage[tonnageSelIdx]?.week}</Text>
+                      <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: T.warn }}>{wTonnage[tonnageSelIdx]?.tonnage} повт</Text>
+                    </View>
+                  )}
+                  <Svg height={h + 20} width="100%" viewBox={`0 0 ${w} ${h + 15}`}>
                     <Defs>
                       <LinearGradient id="tonnageGrad" x1="0" y1="0" x2="0" y2="1">
                         <Stop offset="0" stopColor={T.warn} stopOpacity="0.3" />
@@ -1905,12 +2469,12 @@ function StatsTab({ T, history, tasks, goals, journal, achievements, user, setSt
                     <Polyline points={pts} fill="none" stroke={T.warn} strokeWidth="2.5" strokeLinejoin="round" />
                     {wTonnage.map((d: any, i: number) => {
                       const cx = (i / Math.max(wTonnage.length - 1, 1)) * w;
-                      const cy = h - (d.tonnage / maxT) * (h - 10);
+                      const cy = h - (d.tonnage / maxT) * (h - 15);
+                      const isSel = tonnageSelIdx === i;
                       return (
                         <G key={i}>
-                          <Circle cx={cx} cy={cy} r="3.5" fill={T.warn} stroke={T.card} strokeWidth="1.5" />
-                          <SvgText x={cx} y={cy - 8} textAnchor="middle" fill={T.warn} fontSize="9" fontWeight="700">{d.tonnage}</SvgText>
-                          <SvgText x={cx} y={h + 14} textAnchor="middle" fill={T.muted} fontSize="8">{d.week}</SvgText>
+                          <Circle cx={cx} cy={cy} r={isSel ? 8 : 5} fill={isSel ? T.warn : T.surf} stroke={T.warn} strokeWidth={isSel ? 3 : 2} onPress={() => setTonnageSelIdx(isSel ? null : i)} />
+                          <SvgText x={cx} y={h + 12} textAnchor="middle" fill={isSel ? T.warn : T.muted} fontSize="8" fontWeight={isSel ? "700" : "400"}>{d.week}</SvgText>
                         </G>
                       );
                     })}
@@ -1923,13 +2487,23 @@ function StatsTab({ T, history, tasks, goals, journal, achievements, user, setSt
             {(() => {
               const corr = moodWorkoutCorrelation(history, journal);
               if (corr.length < 2) return null;
-              const w = 300; const h = 100;
+              const w = 300; const h = 80;
               const moodPts = corr.filter((d: any) => d.mood).map((d: any, i, arr) => `${(i / Math.max(arr.length - 1, 1)) * w},${h - ((d.mood - 1) / 4) * (h - 15)}`).join(" ");
               const energyPts = corr.filter((d: any) => d.energy).map((d: any, i, arr) => `${(i / Math.max(arr.length - 1, 1)) * w},${h - ((d.energy - 1) / 4) * (h - 15)}`).join(" ");
               return (
                 <Card T={T} style={{ marginBottom: 14 }}>
-                  <Lbl T={T}>📉 Настроение и тренировки</Lbl>
-                  <Svg height={h + 30} width="100%" viewBox={`0 0 ${w} ${h + 30}`}>
+                  <Lbl T={T}>📉 Настроение и энергия</Lbl>
+                  <View style={{ flexDirection: "row", gap: 16, marginBottom: 8 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <View style={{ width: 16, height: 3, backgroundColor: T.primary, borderRadius: 2 }} />
+                      <Text style={{ fontFamily: "System", fontSize: 11, color: T.muted }}>Настроение</Text>
+                    </View>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <View style={{ width: 16, height: 3, backgroundColor: T.success, borderRadius: 2, borderWidth: 1, borderStyle: "dashed" }} />
+                      <Text style={{ fontFamily: "System", fontSize: 11, color: T.muted }}>Энергия</Text>
+                    </View>
+                  </View>
+                  <Svg height={h + 40} width="100%" viewBox={`0 0 ${w} ${h + 35}`}>
                     {moodPts && <Polyline points={moodPts} fill="none" stroke={T.primary} strokeWidth="2" strokeLinejoin="round" />}
                     {energyPts && <Polyline points={energyPts} fill="none" stroke={T.success} strokeWidth="2" strokeDasharray="4,3" strokeLinejoin="round" />}
                     {corr.filter((d: any) => d.mood).map((d: any, i: number, arr: any[]) => {
@@ -1937,8 +2511,11 @@ function StatsTab({ T, history, tasks, goals, journal, achievements, user, setSt
                       const cy = h - ((d.mood - 1) / 4) * (h - 15);
                       return <Circle key={i} cx={cx} cy={cy} r="3" fill={T.primary} />;
                     })}
-                    <SvgText x="5" y="12" fill={T.primary} fontSize="9">— Настроение</SvgText>
-                    <SvgText x="100" y="12" fill={T.success} fontSize="9">--- Энергия</SvgText>
+                    {corr.filter((d: any) => d.energy).map((d: any, i: number, arr: any[]) => {
+                      const cx = (i / Math.max(arr.length - 1, 1)) * w;
+                      const cy = h - ((d.energy - 1) / 4) * (h - 15);
+                      return <Circle key={i} cx={cx} cy={cy} r="3" fill={T.success} />;
+                    })}
                   </Svg>
                 </Card>
               );
@@ -2030,7 +2607,7 @@ function StatsTab({ T, history, tasks, goals, journal, achievements, user, setSt
       </ScrollView>
     </View>
   );
-}
+});
 
 /* ══════════ ANATOMY TAB ══════════ */
 function AnatomyTab({ T, history }: any) {
@@ -2132,12 +2709,13 @@ function ProfileTab({ T, state, setState }: any) {
   const [asymNote, setAsymNote] = useState(state.user.asymmetryNote || "");
   const [showReset, setShowReset] = useState(false);
   const [showThemes, setShowThemes] = useState(false);
+  const [showStylePicker, setShowStylePicker] = useState(false);
   const total = Object.values(state.history).filter((l: any) => l.completed).length;
   const wR = { min: Math.round((state.user.maxPushups || 27) * 0.6), max: Math.round((state.user.maxPushups || 27) * 0.7) };
   const save = () => { setState((s: any) => ({ ...s, user: { ...s.user, maxPushups: parseInt(mp) || 27, note, asymmetryNote: asymNote } })); setEditing(false); };
 
   return (
-    <ScrollView style={{ padding: 14 }} contentContainerStyle={{ gap: 12 }}>
+    <ScrollView style={{ flex: 1, padding: 14 }} contentContainerStyle={{ gap: 12, paddingBottom: 33 }}>
       <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 24, color: T.txt, marginBottom: 14 }}>⚙️ Профиль</Text>
       <Card T={T} style={{ backgroundColor: `${T.primary}08`, borderColor: `${T.primary}33` }}>
         <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
@@ -2193,6 +2771,21 @@ function ProfileTab({ T, state, setState }: any) {
             })}
           </View>
           <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted, marginTop: 6 }}>{THEME_LIST.find((x) => x.id === (state.themeId || "cosmos"))?.icon} {THEME_LIST.find((x) => x.id === (state.themeId || "cosmos"))?.name}</Text>
+          <View style={{ height: 1, backgroundColor: T.bord, marginVertical: 12 }} />
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 }}>
+            <Text style={{ fontSize: 14 }}>🎭</Text>
+            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, letterSpacing: 1, color: T.muted, textTransform: "uppercase" }}>СТИЛЬ ИНТЕРФЕЙСА</Text>
+          </View>
+          <TouchableOpacity onPress={() => setShowStylePicker(true)} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 10, backgroundColor: T.lo, borderRadius: 10, borderColor: T.bord, borderWidth: 1 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Text style={{ fontSize: 20 }}>{STYLE_LIST.find((x) => x.id === (state.styleThemeId || "standard"))?.icon}</Text>
+              <View>
+                <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 14, color: T.txt }}>{STYLE_LIST.find((x) => x.id === (state.styleThemeId || "standard"))?.name}</Text>
+                <Text style={{ fontFamily: "System", fontSize: 11, color: T.muted }}>{STYLE_LIST.find((x) => x.id === (state.styleThemeId || "standard"))?.desc}</Text>
+              </View>
+            </View>
+            <Text style={{ fontSize: 16, color: T.muted }}>→</Text>
+          </TouchableOpacity>
         </View>
         <View style={{ flexDirection: "column", gap: 8, marginTop: 14 }}>
           <Btn T={T} variant="muted" onPress={() => exportJSON(state)} style={{ width: "100%" }}>📥 Экспорт JSON</Btn>
@@ -2209,13 +2802,14 @@ function ProfileTab({ T, state, setState }: any) {
               <Text style={{ fontFamily: "System", fontSize: 15, color: T.txt, marginBottom: 20 }}>Тренировки, задачи, цели, дневник — всё будет удалено.</Text>
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <Btn T={T} variant="muted" onPress={() => setShowReset(false)} style={{ flex: 1 }}>Отмена</Btn>
-                <Btn T={T} variant="danger" onPress={() => { setState({ ...DEFAULTS, themeId: state.themeId || "cosmos" }); setShowReset(false); }} style={{ flex: 1 }}>Удалить всё</Btn>
+                <Btn T={T} variant="danger" onPress={() => { setState({ ...DEFAULTS, themeId: state.themeId || "cosmos", styleThemeId: state.styleThemeId || "standard" }); setShowReset(false); }} style={{ flex: 1 }}>Удалить всё</Btn>
               </View>
             </Card>
           </View>
         </Modal>
       )}
-      {showThemes && <ThemePicker T={T} currentThemeId={state.themeId || "cosmos"} onSelect={(id: string) => setState((s: any) => ({ ...s, themeId: id }))} onClose={() => setShowThemes(false)} />}
+      {showThemes && <ThemePicker T={T} currentThemeId={state.themeId || "cosmos"} currentStyleId={state.styleThemeId || "standard"} onSelect={(id: string) => setState((s: any) => ({ ...s, themeId: id }))} onStyleSelect={(id: string) => setState((s: any) => ({ ...s, styleThemeId: id }))} onClose={() => setShowThemes(false)} />}
+      {showStylePicker && <StylePicker T={T} currentStyleId={state.styleThemeId || "standard"} onSelect={(id: string) => { setState((s: any) => ({ ...s, styleThemeId: id })); setShowStylePicker(false); }} onClose={() => setShowStylePicker(false)} />}
     </ScrollView>
   );
 }
@@ -2309,6 +2903,486 @@ function PlanEditorModal({ T, customPlan, onSave, onClose }: any) {
   );
 }
 
+/* ══════════ EDIT WORKOUT MODAL ══════════ */
+function EditWorkoutModal({ T, date, log, onSave, onClose }: any) {
+  const insets = useSafeAreaInsets();
+  const plan = PLAN.find((p) => p.id === log.dayId) || { name: "Тренировка", exercises: [] };
+  const [difficulty, setDifficulty] = useState(log.difficulty || 5);
+  const [painNotes, setPainNotes] = useState(log.painNotes || "");
+  const [exerciseLogs, setExerciseLogs] = useState<Record<string, any>>(log.exercises || {});
+  const [showNumpad, setShowNumpad] = useState<{ exId: string; si: number } | null>(null);
+  const [numpadValue, setNumpadValue] = useState("");
+
+  const handleNumpad = (key: string) => {
+    if (key === "⌫") { setNumpadValue((v) => v.slice(0, -1)); return; }
+    if (key === "✓") {
+      const { exId, si } = showNumpad!;
+      setExerciseLogs((prev: Record<string, any>) => {
+        const ex = { ...prev[exId] };
+        ex[si] = { ...ex[si], value: numpadValue || "0" };
+        return { ...prev, [exId]: ex };
+      });
+      setShowNumpad(null); setNumpadValue("");
+      return;
+    }
+    setNumpadValue((v) => v.length < 4 ? v + key : v);
+  };
+
+  const handleSave = () => {
+    onSave({ ...log, difficulty, painNotes, exercises: exerciseLogs });
+    onClose();
+  };
+
+  const dateObj = new Date(date + "T12:00:00");
+  const dateLabel = dateObj.toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" });
+
+  return (
+    <Modal transparent animationType="slide" visible>
+      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,.85)", justifyContent: "flex-end" }}>
+        <View style={{ backgroundColor: T.surf, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 16, maxHeight: "90%" }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 12 }}>
+            <View>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 18, color: T.txt }}>✏️ Редактировать</Text>
+              <Text style={{ fontFamily: "System", fontSize: 11, color: T.muted, marginTop: 2 }}>{dateLabel} · {plan.name}</Text>
+            </View>
+            <TouchableOpacity onPress={onClose}><Text style={{ fontSize: 20, color: T.muted }}>✕</Text></TouchableOpacity>
+          </View>
+
+          <ScrollView style={{ maxHeight: "70%" }} showsVerticalScrollIndicator={false}>
+            <Card T={T} style={{ marginBottom: 12 }}>
+              <Lbl T={T}>Сложность</Lbl>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
+                {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                  <TouchableOpacity key={n} onPress={() => setDifficulty(n)}
+                    style={{ width: 38, height: 38, borderRadius: 8, borderColor: difficulty === n ? T.primary : T.bord, borderWidth: 2, backgroundColor: difficulty === n ? `${T.primary}22` : T.lo, justifyContent: "center", alignItems: "center" }}>
+                    <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 15, color: difficulty === n ? T.primary : T.muted }}>{n}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </Card>
+
+            <Card T={T} style={{ marginBottom: 12 }}>
+              <Lbl T={T}>Болевые ощущения</Lbl>
+              <TextInput value={painNotes} onChangeText={setPainNotes} placeholder="Опиши, если что-то беспокоило…"
+                style={{ width: "100%", borderRadius: 8, borderColor: T.bord, borderWidth: 1.5, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 14, padding: 10, minHeight: 70, marginTop: 8 }} multiline />
+            </Card>
+
+            <Card T={T} style={{ marginBottom: 12 }}>
+              <Lbl T={T}>Результаты</Lbl>
+              {(plan.exercises || []).map((ex: any) => {
+                const logs = exerciseLogs[ex.id] || [];
+                if (!logs.length) return null;
+                return (
+                  <View key={ex.id} style={{ marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: T.bord }}>
+                    <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 14, color: T.txt, marginBottom: 8 }}>{ex.name}</Text>
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                      {logs.map((s: any, si: number) => (
+                        <TouchableOpacity key={si} onPress={() => { setShowNumpad({ exId: ex.id, si }); setNumpadValue(String(s.value || "")); }}
+                          style={{ minWidth: 60, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderColor: s.done ? T.success : T.bord, borderWidth: 1.5, backgroundColor: s.done ? `${T.success}15` : T.lo, justifyContent: "center", alignItems: "center" }}>
+                          <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 15, color: s.done ? T.success : T.muted }}>{s.value || "-"}</Text>
+                          <Text style={{ fontFamily: "System", fontSize: 10, color: T.muted }}>{ex.type === "seconds" ? "сек" : "повт"}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                );
+              })}
+            </Card>
+          </ScrollView>
+
+          {showNumpad && (
+            <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: T.surf, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 16 + insets.bottom }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 12 }}>
+                <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted }}>Введи значение</Text>
+                <TouchableOpacity onPress={() => { setShowNumpad(null); setNumpadValue(""); }}><Text style={{ color: T.muted }}>Отмена</Text></TouchableOpacity>
+              </View>
+              <View style={{ backgroundColor: T.lo, borderRadius: 12, padding: 12, marginBottom: 12 }}>
+                <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 40, color: T.txt, textAlign: "center" }}>{numpadValue || "0"}</Text>
+                <Text style={{ fontFamily: "System", fontSize: 14, color: T.muted, textAlign: "center" }}>{showNumpad && plan.exercises.find((e: any) => e.id === showNumpad.exId)?.type === "seconds" ? "секунд" : "повторений"}</Text>
+              </View>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
+                {["1","2","3","4","5","6","7","8","9","⌫","0","✓"].map((key) => (
+                  <TouchableOpacity key={key} onPress={() => handleNumpad(key)}
+                    style={{ width: "30%", aspectRatio: 2, borderRadius: 10, justifyContent: "center", alignItems: "center",
+                      backgroundColor: key === "✓" ? T.primary : key === "⌫" ? `${T.danger}20` : T.card,
+                      borderColor: key === "✓" ? T.primary : T.bord, borderWidth: 1 }}>
+                    <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 22, color: key === "✓" ? "#000" : key === "⌫" ? T.danger : T.txt }}>{key}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 12, paddingBottom: insets.bottom }}>
+            <Btn T={T} variant="muted" onPress={onClose} style={{ flex: 1 }}>Отмена</Btn>
+            <Btn T={T} variant="success" onPress={handleSave} style={{ flex: 2 }}>Сохранить</Btn>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+/* ══════════ HEAT MAP ══════════ */
+function HeatMap({ T, history }: any) {
+  const data = getHeatMapData(history, 12);
+  const completedCount = data.filter(d => d.completed).length;
+  return (
+    <Card T={T} style={{ marginBottom: 12 }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+        <Lbl T={T}>📅 Активность / 12 недель</Lbl>
+        <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: T.primary }}>{completedCount} тренировок</Text>
+      </View>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 2 }}>
+        {data.map((d: any, i: number) => {
+          const opacity = d.completed ? Math.min(1, 0.25 + (d.difficulty / 10) * 0.75) : d.isRest ? 0.05 : 0.1;
+          const bg = d.completed ? T.primary : d.isRest ? T.muted : T.lo;
+          return (
+            <View key={i} style={{
+              width: 10, height: 10, borderRadius: 2, backgroundColor: bg, opacity,
+              borderColor: d.isToday ? T.warn : "transparent", borderWidth: d.isToday ? 1.5 : 0,
+            }} />
+          );
+        })}
+      </View>
+    </Card>
+  );
+}
+
+/* ══════════ INSIGHTS CARD ══════════ */
+function InsightsCard({ T, history, journal, tasks, goals }: any) {
+  const insights = generateInsights(history, journal, tasks, goals);
+  if (insights.length === 0) return null;
+  return (
+    <>
+      {insights.map((ins: any, i: number) => (
+        <View key={i} style={{ padding: 10, backgroundColor: `${ins.color}10`, borderColor: `${ins.color}33`, borderWidth: 1, borderRadius: 10, flexDirection: "row", gap: 8, marginBottom: 8 }}>
+          <Text style={{ fontSize: 18 }}>{ins.icon}</Text>
+          <Text style={{ fontFamily: "System", fontSize: 13, color: T.txt, flex: 1, lineHeight: 18 }}>{ins.text}</Text>
+        </View>
+      ))}
+    </>
+  );
+}
+
+/* ══════════ MUSCLE RECOVERY ══════════ */
+function MuscleRecoveryCard({ T, history }: any) {
+  const recovery = getMuscleRecovery(history);
+  const groups = [
+    { id: "upper", name: "Верх", emoji: "💪", color: "#00C4F0" },
+    { id: "lower", name: "Ноги", emoji: "🦵", color: "#E040FB" },
+    { id: "core", name: "Кор", emoji: "⚡", color: "#FF9800" },
+  ];
+  const statusLabel = (days: number | null) => {
+    if (days === null) return { text: "Нет данных", color: T.muted, pct: 0 };
+    if (days === 0) return { text: "Сегодня", color: T.danger, pct: 0 };
+    if (days <= 1) return { text: "Восстанавливается", color: T.warn, pct: 33 };
+    if (days <= 2) return { text: "Почти готово", color: T.success, pct: 66 };
+    return { text: "Полностью готово", color: T.primary, pct: 100 };
+  };
+  return (
+    <Card T={T} style={{ marginBottom: 12 }}>
+      <Lbl T={T}>🫀 Восстановление мышц</Lbl>
+      {groups.map((g) => {
+        const days = recovery[g.id];
+        const st = statusLabel(days);
+        return (
+          <View key={g.id} style={{ marginTop: 10 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+              <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: T.txt }}>{g.emoji} {g.name}</Text>
+              <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: st.color }}>{st.text}{days !== null ? ` (${days} дн.)` : ""}</Text>
+            </View>
+            <View style={{ height: 6, backgroundColor: T.lo, borderRadius: 3 }}>
+              <View style={{ height: "100%", width: `${st.pct}%`, backgroundColor: st.color, borderRadius: 3 }} />
+            </View>
+          </View>
+        );
+      })}
+    </Card>
+  );
+}
+
+/* ══════════ NUTRITION TAB ══════════ */
+function NutritionTab({ T, state, setState }: any) {
+  const nutrition = state.nutrition || {};
+  const todayData = nutrition[TODAY] || { calories: 0, protein: 0, carbs: 0, fat: 0, entries: [] };
+  const [adding, setAdding] = useState(false);
+  const [customName, setCustomName] = useState("");
+  const [customCal, setCustomCal] = useState("");
+  const [customP, setCustomP] = useState("");
+  const [customC, setCustomC] = useState("");
+  const [customF, setCustomF] = useState("");
+
+  const addFood = (name: string, cal: number, p: number, c: number, f: number) => {
+    const entries = [...(todayData.entries || []), { name, cal, p, c, f, ts: Date.now() }];
+    const updated = {
+      calories: todayData.calories + cal,
+      protein: todayData.protein + p,
+      carbs: todayData.carbs + c,
+      fat: todayData.fat + f,
+      entries,
+    };
+    setState((s: any) => ({ ...s, nutrition: { ...s.nutrition, [TODAY]: updated } }));
+  };
+
+  const removeEntry = (idx: number) => {
+    const entry = todayData.entries[idx];
+    const entries = todayData.entries.filter((_: any, i: number) => i !== idx);
+    const updated = {
+      calories: Math.max(0, todayData.calories - entry.cal),
+      protein: Math.max(0, todayData.protein - entry.p),
+      carbs: Math.max(0, todayData.carbs - entry.c),
+      fat: Math.max(0, todayData.fat - entry.f),
+      entries,
+    };
+    setState((s: any) => ({ ...s, nutrition: { ...s.nutrition, [TODAY]: updated } }));
+  };
+
+  // Last 7 days calorie bar
+  const last7 = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(); d.setDate(d.getDate() - 6 + i);
+    const dd = fmt(d);
+    const nd = nutrition[dd];
+    return { date: d.toLocaleDateString("ru-RU", { weekday: "short" }), cal: nd?.calories || 0 };
+  });
+  const maxCal = Math.max(...last7.map(d => d.cal), MACRO_GOALS.calories);
+
+  const calPct = Math.min(100, Math.round((todayData.calories / Math.max(MACRO_GOALS.calories, 1)) * 100));
+  const proteinPct = Math.min(100, Math.round((todayData.protein / Math.max(MACRO_GOALS.protein, 1)) * 100));
+  const carbsPct = Math.min(100, Math.round((todayData.carbs / Math.max(MACRO_GOALS.carbs, 1)) * 100));
+  const fatPct = Math.min(100, Math.round((todayData.fat / Math.max(MACRO_GOALS.fat, 1)) * 100));
+
+  return (
+    <ScrollView style={{ flex: 1, padding: 14 }} contentContainerStyle={{ gap: 12, paddingBottom: 33 }}>
+      <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 24, color: T.txt }}>🥗 Питание</Text>
+
+      {/* Modern Rings Card */}
+      <Card T={T} style={{ backgroundColor: T.card }}>
+        {/* Main calorie ring */}
+        <View style={{ alignItems: "center", marginBottom: 16 }}>
+          <View style={{ width: 140, height: 140, justifyContent: "center", alignItems: "center" }}>
+            <Svg width={140} height={140} style={{ position: "absolute" }}>
+              <Circle cx={70} cy={70} r={58} stroke={T.lo} strokeWidth={12} fill="none" />
+              <Circle
+                cx={70} cy={70} r={58}
+                stroke={todayData.calories > MACRO_GOALS.calories ? T.danger : T.primary}
+                strokeWidth={12}
+                fill="none"
+                strokeDasharray={2 * Math.PI * 58}
+                strokeDashoffset={2 * Math.PI * 58 * (1 - calPct / 100)}
+                strokeLinecap="round"
+                rotation={-90}
+                origin="70, 70"
+              />
+            </Svg>
+            <View style={{ alignItems: "center" }}>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 32, color: T.txt }}>{todayData.calories}</Text>
+              <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted }}>из {MACRO_GOALS.calories}</Text>
+              <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 14, color: todayData.calories > MACRO_GOALS.calories ? T.danger : T.primary, marginTop: 2 }}>
+                {calPct}%
+              </Text>
+            </View>
+          </View>
+          <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 11, color: T.muted, marginTop: 8, letterSpacing: 1, textTransform: "uppercase" }}>КАЛОРИИ СЕГОДНЯ</Text>
+        </View>
+
+        {/* Macro rings row */}
+        <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
+          {/* Protein */}
+          <View style={{ alignItems: "center" }}>
+            <View style={{ width: 70, height: 70, justifyContent: "center", alignItems: "center" }}>
+              <Svg width={70} height={70} style={{ position: "absolute" }}>
+                <Circle cx={35} cy={35} r={28} stroke={T.lo} strokeWidth={6} fill="none" />
+                <Circle
+                  cx={35} cy={35} r={28}
+                  stroke={T.success}
+                  strokeWidth={6}
+                  fill="none"
+                  strokeDasharray={2 * Math.PI * 28}
+                  strokeDashoffset={2 * Math.PI * 28 * (1 - proteinPct / 100)}
+                  strokeLinecap="round"
+                  rotation={-90}
+                  origin="35, 35"
+                />
+              </Svg>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 18, color: T.success }}>{Math.round(todayData.protein)}</Text>
+            </View>
+            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 10, color: T.success, marginTop: 4 }}>БЕЛОК</Text>
+            <Text style={{ fontFamily: "System", fontSize: 9, color: T.muted }}>{MACRO_GOALS.protein}г</Text>
+          </View>
+
+          {/* Carbs */}
+          <View style={{ alignItems: "center" }}>
+            <View style={{ width: 70, height: 70, justifyContent: "center", alignItems: "center" }}>
+              <Svg width={70} height={70} style={{ position: "absolute" }}>
+                <Circle cx={35} cy={35} r={28} stroke={T.lo} strokeWidth={6} fill="none" />
+                <Circle
+                  cx={35} cy={35} r={28}
+                  stroke={T.warn}
+                  strokeWidth={6}
+                  fill="none"
+                  strokeDasharray={2 * Math.PI * 28}
+                  strokeDashoffset={2 * Math.PI * 28 * (1 - carbsPct / 100)}
+                  strokeLinecap="round"
+                  rotation={-90}
+                  origin="35, 35"
+                />
+              </Svg>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 18, color: T.warn }}>{Math.round(todayData.carbs)}</Text>
+            </View>
+            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 10, color: T.warn, marginTop: 4 }}>УГЛЕВОДЫ</Text>
+            <Text style={{ fontFamily: "System", fontSize: 9, color: T.muted }}>{MACRO_GOALS.carbs}г</Text>
+          </View>
+
+          {/* Fat */}
+          <View style={{ alignItems: "center" }}>
+            <View style={{ width: 70, height: 70, justifyContent: "center", alignItems: "center" }}>
+              <Svg width={70} height={70} style={{ position: "absolute" }}>
+                <Circle cx={35} cy={35} r={28} stroke={T.lo} strokeWidth={6} fill="none" />
+                <Circle
+                  cx={35} cy={35} r={28}
+                  stroke={T.danger}
+                  strokeWidth={6}
+                  fill="none"
+                  strokeDasharray={2 * Math.PI * 28}
+                  strokeDashoffset={2 * Math.PI * 28 * (1 - fatPct / 100)}
+                  strokeLinecap="round"
+                  rotation={-90}
+                  origin="35, 35"
+                />
+              </Svg>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 18, color: T.danger }}>{Math.round(todayData.fat)}</Text>
+            </View>
+            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 10, color: T.danger, marginTop: 4 }}>ЖИРЫ</Text>
+            <Text style={{ fontFamily: "System", fontSize: 9, color: T.muted }}>{MACRO_GOALS.fat}г</Text>
+          </View>
+        </View>
+      </Card>
+
+      {/* 7-day bar chart */}
+      <Card T={T}>
+        <Lbl T={T}>Калории / 7 дней</Lbl>
+        <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 4, height: 80, marginTop: 10 }}>
+          {last7.map((d, i) => {
+            const h = maxCal > 0 ? (d.cal / maxCal) * 70 : 0;
+            const isToday = i === 6;
+            return (
+              <View key={i} style={{ flex: 1, alignItems: "center" }}>
+                {d.cal > 0 && <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 8, color: T.primary, marginBottom: 2 }}>{d.cal}</Text>}
+                <View style={{ width: "100%", height: h, backgroundColor: isToday ? T.primary : `${T.primary}55`, borderRadius: 3 }} />
+                <Text style={{ fontFamily: "System", fontSize: 8, color: isToday ? T.primary : T.muted, marginTop: 2 }}>{d.date}</Text>
+              </View>
+            );
+          })}
+        </View>
+      </Card>
+
+      {/* Food presets */}
+      <Card T={T}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 10 }}>
+          <Lbl T={T}>Добавить еду</Lbl>
+          <Btn T={T} variant="ghost" onPress={() => setAdding(!adding)} style={{ minHeight: 30, paddingHorizontal: 10, fontSize: 11 }}>{adding ? "Закрыть" : "Своё"}</Btn>
+        </View>
+        {adding && (
+          <View style={{ marginBottom: 10 }}>
+            <TextInput value={customName} onChangeText={setCustomName} placeholder="Название" placeholderTextColor={T.muted}
+              style={{ height: 36, borderRadius: 8, borderColor: T.bord, borderWidth: 1, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 13, paddingHorizontal: 10, marginBottom: 6 }} />
+            <View style={{ flexDirection: "row", gap: 6 }}>
+              <TextInput keyboardType="numeric" value={customCal} onChangeText={setCustomCal} placeholder="Ккал" placeholderTextColor={T.muted}
+                style={{ flex: 1, height: 34, borderRadius: 8, borderColor: T.bord, borderWidth: 1, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 13, textAlign: "center" }} />
+              <TextInput keyboardType="numeric" value={customP} onChangeText={setCustomP} placeholder="Б" placeholderTextColor={T.muted}
+                style={{ flex: 1, height: 34, borderRadius: 8, borderColor: T.bord, borderWidth: 1, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 13, textAlign: "center" }} />
+              <TextInput keyboardType="numeric" value={customC} onChangeText={setCustomC} placeholder="У" placeholderTextColor={T.muted}
+                style={{ flex: 1, height: 34, borderRadius: 8, borderColor: T.bord, borderWidth: 1, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 13, textAlign: "center" }} />
+              <TextInput keyboardType="numeric" value={customF} onChangeText={setCustomF} placeholder="Ж" placeholderTextColor={T.muted}
+                style={{ flex: 1, height: 34, borderRadius: 8, borderColor: T.bord, borderWidth: 1, backgroundColor: T.lo, color: T.txt, fontFamily: "System", fontSize: 13, textAlign: "center" }} />
+            </View>
+            <Btn T={T} onPress={() => { if (customName) { addFood(customName, Number(customCal) || 0, Number(customP) || 0, Number(customC) || 0, Number(customF) || 0); setCustomName(""); setCustomCal(""); setCustomP(""); setCustomC(""); setCustomF(""); } }} style={{ marginTop: 8, minHeight: 36, fontSize: 13 }}>+ Добавить</Btn>
+          </View>
+        )}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+          {FOOD_PRESETS.map((food, i) => (
+            <TouchableOpacity key={i} onPress={() => addFood(food.name, food.cal, food.p, food.c, food.f)}
+              style={{ flex: 1, minWidth: "45%", padding: 10, borderRadius: 10, borderColor: T.bord, borderWidth: 1, backgroundColor: T.lo }}>
+              <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: T.txt }}>{food.name}</Text>
+              <Text style={{ fontFamily: "System", fontSize: 10, color: T.muted, marginTop: 2 }}>{food.cal} ккал · Б:{food.p} У:{food.c} Ж:{food.f}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </Card>
+
+      {/* Today's entries */}
+      {todayData.entries.length > 0 && (
+        <Card T={T}>
+          <Lbl T={T}>Съедено сегодня ({todayData.entries.length})</Lbl>
+          {todayData.entries.map((e: any, i: number) => (
+            <View key={i} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: T.bord }}>
+              <View>
+                <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 14, color: T.txt }}>{e.name}</Text>
+                <Text style={{ fontFamily: "System", fontSize: 11, color: T.muted }}>{e.cal} ккал · Б:{e.p} У:{e.c} Ж:{e.f}</Text>
+              </View>
+              <TouchableOpacity onPress={() => removeEntry(i)}><Text style={{ fontSize: 16, color: T.danger }}>×</Text></TouchableOpacity>
+            </View>
+          ))}
+        </Card>
+      )}
+    </ScrollView>
+  );
+}
+
+/* ══════════ MONTHLY STATS ══════════ */
+function MonthlyStats({ T, history, journal }: any) {
+  const [monthOffset, setMonthOffset] = useState(0);
+  const month = useMemo(() => {
+    const d = new Date(); d.setMonth(d.getMonth() + monthOffset); d.setDate(1); return d;
+  }, [monthOffset]);
+  const stats = getMonthlyStats(history, journal, month);
+  const monthName = month.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+
+  return (
+    <Card T={T} style={{ marginBottom: 12 }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <TouchableOpacity onPress={() => setMonthOffset(m => m - 1)}><Text style={{ fontSize: 18, color: T.primary }}>◀</Text></TouchableOpacity>
+        <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 16, color: T.txt, textTransform: "capitalize" }}>{monthName}</Text>
+        <TouchableOpacity onPress={() => setMonthOffset(m => m + 1)} disabled={monthOffset >= 0}><Text style={{ fontSize: 18, color: monthOffset >= 0 ? T.muted : T.primary }}>▶</Text></TouchableOpacity>
+      </View>
+      <View style={{ flexDirection: "row", gap: 6, marginBottom: 12 }}>
+        <View style={{ flex: 1, backgroundColor: T.lo, borderRadius: 8, padding: 8, alignItems: "center" }}>
+          <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 18, color: T.primary }}>{stats.workoutDays}</Text>
+          <Text style={{ fontFamily: "System", fontSize: 10, color: T.muted }}>Тренировок</Text>
+        </View>
+        <View style={{ flex: 1, backgroundColor: T.lo, borderRadius: 8, padding: 8, alignItems: "center" }}>
+          <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 18, color: T.success }}>{stats.consistency}%</Text>
+          <Text style={{ fontFamily: "System", fontSize: 10, color: T.muted }}>Консист.</Text>
+        </View>
+        <View style={{ flex: 1, backgroundColor: T.lo, borderRadius: 8, padding: 8, alignItems: "center" }}>
+          <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 18, color: T.warn }}>{stats.avgDiff}</Text>
+          <Text style={{ fontFamily: "System", fontSize: 10, color: T.muted }}>Сложн.</Text>
+        </View>
+        {stats.avgMood && (
+          <View style={{ flex: 1, backgroundColor: T.lo, borderRadius: 8, padding: 8, alignItems: "center" }}>
+            <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 18, color: T.primary }}>{stats.avgMood}</Text>
+            <Text style={{ fontFamily: "System", fontSize: 10, color: T.muted }}>Настр.</Text>
+          </View>
+        )}
+      </View>
+      {/* Mini calendar grid */}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 2 }}>
+        {stats.days.map((d: any, i: number) => {
+          const bg = d.workout ? T.primary : d.isRest ? `${T.muted}22` : d.mood ? `${T.warn}44` : T.lo;
+          return (
+            <View key={i} style={{ width: 18, height: 18, borderRadius: 3, backgroundColor: bg, justifyContent: "center", alignItems: "center" }}>
+              {d.workout && <Text style={{ fontSize: 7, color: "#000" }}>✓</Text>}
+              {d.mood && !d.workout && <Text style={{ fontSize: 7 }}>{MOODS.find((m: any) => m.v === d.mood)?.e}</Text>}
+            </View>
+          );
+        })}
+      </View>
+      {stats.avgSleep && <Text style={{ fontFamily: "System", fontSize: 11, color: T.muted, marginTop: 8 }}>Средний сон: {stats.avgSleep}ч</Text>}
+    </Card>
+  );
+}
+
 /* ══════════ APP ROOT ══════════ */
 export default function App() {
   const insets = useSafeAreaInsets();
@@ -2340,7 +3414,8 @@ export default function App() {
   const setPainLog = useCallback((fn: any) => setState((s: any) => ({ ...s, painLog: typeof fn === "function" ? fn(s.painLog || []) : fn })), [setState]);
 
   const themeId = state.themeId || "cosmos";
-  const T = useMemo(() => getTheme(themeId), [themeId]);
+  const styleThemeId = state.styleThemeId || "standard";
+  const T = useMemo(() => getTheme(themeId, styleThemeId), [themeId, styleThemeId]);
   const prs = useMemo(() => getPRs(state.history), [state.history]);
 
   const showAchievement = useCallback((id: string) => {
@@ -2402,19 +3477,20 @@ export default function App() {
           </View>
         </View>
       )}
-      {showThemes && <ThemePicker T={T} currentThemeId={themeId} onSelect={(id: string) => setState((s: any) => ({ ...s, themeId: id }))} onClose={() => setShowThemes(false)} />}
+      {showThemes && <ThemePicker T={T} currentThemeId={themeId} currentStyleId={styleThemeId} onSelect={(id: string) => setState((s: any) => ({ ...s, themeId: id }))} onStyleSelect={(id: string) => setState((s: any) => ({ ...s, styleThemeId: id }))} onClose={() => setShowThemes(false)} />}
       {showPlanEditor && <PlanEditorModal T={T} customPlan={state.customPlan} onSave={(plan: any) => setState((s: any) => ({ ...s, customPlan: plan }))} onClose={() => setShowPlanEditor(false)} />}
       <View style={{ flex: 1, maxWidth: MAX_W, alignSelf: "center", width: "100%", paddingTop: insets.top, paddingBottom: insets.bottom }}>
-        <Header T={T} streak={state.streak || 0} onOpenThemes={() => setShowThemes(true)} />
+        <Header T={T} streak={state.streak || 0} onOpenThemes={() => setShowThemes(true)} styleId={styleThemeId} />
         <View style={{ flex: 1 }}>
           {tab === "dashboard" && <DashboardTab T={T} state={state} setState={setState} onStartWorkout={startWorkout} />}
-          {tab === "workout" && <WorkoutTab T={T} session={session} setSession={setSession} onFinish={finishWorkout} prs={prs} history={state.history} onStart={startWorkout} onEditPlan={() => setShowPlanEditor(true)} hasCustomPlan={!!state.customPlan} />}
+          {tab === "workout" && <WorkoutTab T={T} session={session} setSession={setSession} onFinish={finishWorkout} prs={prs} history={state.history} onStart={startWorkout} onEditPlan={() => setShowPlanEditor(true)} onEditHistory={(date: string, log: any) => setState((s: any) => ({ ...s, history: { ...s.history, [date]: log } }))} hasCustomPlan={!!state.customPlan} />}
+          {tab === "nutrition" && <NutritionTab T={T} state={state} setState={setState} />}
           {tab === "tasks" && <TasksGoalsTab T={T} tasks={state.tasks || []} setTasks={setTasks} goals={state.goals || []} setGoals={setGoals} />}
           {tab === "journal" && <JournalBodyTab T={T} journal={state.journal || []} setJournal={setJournal} bodyLog={state.bodyLog || []} setBodyLog={setBodyLog} reflections={state.reflections || []} setReflections={setReflections} painLog={state.painLog || []} setPainLog={setPainLog} />}
           {tab === "ai" && <MentorTab T={T} state={state} setState={setState} />}
           {tab === "stats" && <StatsTab T={T} history={state.history} tasks={state.tasks || []} goals={state.goals || []} journal={state.journal || []} achievements={state.achievements || []} user={state.user} setState={setState} />}
         </View>
-        <BottomNav T={T} tab={tab} setTab={setTab} hasActive={!!session} />
+        <BottomNav T={T} tab={tab} setTab={setTab} hasActive={!!session} styleId={styleThemeId} />
       </View>
     </View>
   );

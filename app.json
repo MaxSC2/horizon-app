@@ -14,7 +14,8 @@
       "adaptiveIcon": {
         "foregroundImage": "assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "hermesEnabled": false
     },
     "ios": {
       "bundleIdentifier": "com.horizon.app"

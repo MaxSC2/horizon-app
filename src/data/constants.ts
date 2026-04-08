@@ -320,6 +320,57 @@ export const SLEEP_LABELS = [
   {h:9,label:"9ч+ — много"},
 ];
 
+export const STYLE_LIST = [
+  { 
+    id: "standard", name: "Стандарт", icon: "◻", 
+    desc: "Чистый и простой интерфейс",
+    radius: 14, shadow: 10, borderWidth: 1, headerBold: false, 
+    accent: "line", showGlow: false 
+  },
+  { 
+    id: "rpg", name: "RPG Game", icon: "⚔", 
+    desc: "Игровой интерфейс с XP и уровнями",
+    radius: 8, shadow: 12, borderWidth: 2, headerBold: true, 
+    accent: "bar", showGlow: true, glowColor: "#00C4F0", showXP: true 
+  },
+  { 
+    id: "kawaii", name: "Kawaii", icon: "🐱", 
+    desc: "Милый, мягкие формы и пастель",
+    radius: 24, shadow: 6, borderWidth: 2, headerBold: false, 
+    accent: "soft", showGlow: true, glowColor: "#FF69B4", bouncy: true 
+  },
+  { 
+    id: "minimal", name: "Zen", icon: "☯", 
+    desc: "Спокойный, природный минимализм",
+    radius: 8, shadow: 0, borderWidth: 1, headerBold: false, 
+    accent: "zen", showGlow: false, thin: true 
+  },
+  { 
+    id: "glass", name: "Glass", icon: "◈", 
+    desc: "Матовое стекло, полупрозрачность",
+    radius: 20, shadow: 8, borderWidth: 1, headerBold: false, 
+    accent: "glow", showGlow: true, glowColor: "#00C4F0", opacity: 0.75 
+  },
+  { 
+    id: "cyber", name: "Cyber", icon: "⬡", 
+    desc: "Футуристичный, неон и глитч",
+    radius: 4, shadow: 15, borderWidth: 2, headerBold: true, 
+    accent: "neon", showGlow: true, glowColor: "#00FFCC" 
+  },
+  { 
+    id: "retro", name: "Retro", icon: "■", 
+    desc: "Пиксельный, 8-bit ностальгия",
+    radius: 0, shadow: 0, borderWidth: 3, headerBold: true, 
+    accent: "pixel", showGlow: false 
+  },
+  { 
+    id: "steampunk", name: "Steampunk", icon: "⚙", 
+    desc: "Викторианская механика, латунь",
+    radius: 6, shadow: 10, borderWidth: 2, headerBold: true, 
+    accent: "brass", showGlow: true, glowColor: "#CD7F32" 
+  },
+];
+
 export const THEME_LIST = [
   {id:"cosmos", name:"Космос", desc:"Глубокий тёмно-синий", icon:"🌌", dark:true,
     bg:"#07090D", surf:"#0D1520", card:"#111D2C", bord:"#1A2E42",
@@ -355,13 +406,29 @@ export const THEME_LIST = [
     primary:"#B45309", success:"#16A34A", warn:"#CA8A04", danger:"#DC2626"},
 ];
 
+export const FOOD_PRESETS = [
+  { name: "Куриная грудь 100г", cal: 165, p: 31, c: 0, f: 3.6 },
+  { name: "Овсянка 100г", cal: 389, p: 17, c: 66, f: 7 },
+  { name: "Яйцо 1шт", cal: 78, p: 6, c: 0.6, f: 5 },
+  { name: "Творог 200г", cal: 180, p: 34, c: 6, f: 1 },
+  { name: "Рис варёный 150г", cal: 195, p: 4, c: 45, f: 0.5 },
+  { name: "Банан 1шт", cal: 105, p: 1.3, c: 27, f: 0.3 },
+  { name: "Гречка 150г", cal: 196, p: 7, c: 40, f: 2 },
+  { name: "Протеин 1 скуп", cal: 120, p: 24, c: 3, f: 1 },
+  { name: "Молоко 200мл", cal: 102, p: 5.4, c: 9.4, f: 4.8 },
+  { name: "Хлеб 1 ломтик", cal: 65, p: 2.5, c: 12, f: 0.6 },
+];
+
+export const MACRO_GOALS = { calories: 2200, protein: 150, carbs: 220, fat: 70 };
+
 export const DEFAULTS = {
   history: {}, tasks: [], goals: [], journal: [],
   bodyLog: [], reflections: [], achievements: [],
   aiHistory: [], painLog: [], photos: [],
   focus: { text: "", date: "" },
   customPlan: null, onboarded: false,
-  user: { maxPushups: 27, note: "" },
-  themeId: "cosmos", dark: true,
+  user: { maxPushups: 27, note: "", height: "", hips: "" },
+  themeId: "cosmos", dark: true, styleThemeId: "standard",
   aiConfig: { provider: "claude", apiKey: "", model: "", endpoint: "", name: "", systemExtra: "" },
+  nutrition: {},
 };

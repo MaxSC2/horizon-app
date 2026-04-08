@@ -302,3 +302,151 @@ ${recentMoods || "нет данных"}
 
 Ты можешь: анализировать тренировки, давать советы по восстановлению, объяснять упражнения, мотивировать, помогать с целями и планированием. Если пользователь спрашивает о конкретном упражнении — объясняй технику. При отсутствии данных — задавай уточняющие вопросы.`;
 }
+
+/* ── Heat map data: last N weeks ── */
+export function getHeatMapData(history: Record<string, any>, weeks = 12) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const start = new Date(today); start.setDate(today.getDate() - (weeks * 7 - 1));
+  const days: any[] = [];
+  for (let d = new Date(start); d <= today; d.setDate(d.getDate() + 1)) {
+    const ds = fmt(d);
+    const log = history[ds];
+    const planI = d.getDay() === 0 ? 6 : d.getDay() - 1;
+    const isRest = PLAN[planI]?.type === "rest";
+    days.push({
+      date: ds,
+      completed: log?.completed || false,
+      difficulty: log?.difficulty || 0,
+      isRest,
+      isToday: ds === TODAY,
+      weekday: d.getDay(),
+    });
+  }
+  return days;
+}
+
+/* ── Muscle recovery: days since last trained ── */
+export function getMuscleRecovery(history: Record<string, any>) {
+  const muscleMap: Record<string, string[]> = {
+    upper: ["pushups", "slow_pushups", "door_row", "pause_pushups", "narrow_pushups", "pike", "iso_row", "pushup_hold", "circ_push", "circ_row", "min_pushups"],
+    lower: ["squats", "lunges", "glute_bridge", "calf_raise", "bulgarian", "single_glute", "wall_sit", "circ_squat", "circ_lunges", "min_squats"],
+    core: ["plank", "hollow", "side_plank", "circ_plank", "min_plank"],
+  };
+  const result: Record<string, number | null> = {};
+  const sortedDates = Object.keys(history).filter(d => history[d].completed).sort().reverse();
+  ["upper", "lower", "core"].forEach(group => {
+    const exIds = new Set(muscleMap[group]);
+    let daysSince: number | null = null;
+    for (let i = 0; i < sortedDates.length; i++) {
+      const log = history[sortedDates[i]];
+      const hasGroup = Object.keys(log.exercises || {}).some(id => exIds.has(id) && log.exercises[id].some((s: any) => (parseInt(s.value) || 0) > 0));
+      if (hasGroup) {
+        const d = new Date(TODAY + "T12:00:00").getTime() - new Date(sortedDates[i] + "T12:00:00").getTime();
+        daysSince = Math.round(d / 86400000);
+        break;
+      }
+    }
+    result[group] = daysSince;
+  });
+  return result;
+}
+
+/* ── Smart local insights ── */
+export function generateInsights(history: Record<string, any>, journal: any[], tasks: any[], goals: any[]) {
+  const insights: any[] = [];
+  const streak = calcStreak(history);
+  const totalW = Object.values(history).filter((l: any) => l.completed).length;
+
+  // Sleep insights
+  const recentSleep = journal.filter(j => j.sleep > 0).slice(-7);
+  if (recentSleep.length >= 3) {
+    const avgSleep = recentSleep.reduce((s, j) => s + j.sleep, 0) / recentSleep.length;
+    const lowSleepDays = recentSleep.filter(j => j.sleep < 7).length;
+    if (lowSleepDays >= 3) insights.push({ icon: "😴", color: "#FF9500", text: `${lowSleepDays} из ${recentSleep.length} дней сон меньше 7ч — восстановление под угрозой` });
+    else if (avgSleep >= 8) insights.push({ icon: "💤", color: "#00E676", text: `Средний сон ${avgSleep.toFixed(1)}ч — отличное восстановление!` });
+  }
+
+  // Streak insights
+  if (streak >= 7) insights.push({ icon: "🔥", color: "#FFD600", text: `${streak} дней подряд — ты в потоке! Не останавливайся` });
+  else if (streak === 0 && totalW > 3) insights.push({ icon: "⚡", color: "#FF4455", text: "Серия прервана. Один подход сегодня восстановит ритм" });
+
+  // Mood after workout
+  const corrData = moodWorkoutCorrelation(history, journal);
+  const wMoods = corrData.filter(d => d.workout === 1 && d.mood).map(d => d.mood);
+  const rMoods = corrData.filter(d => d.workout === 0 && d.mood && !d.isRest).map(d => d.mood);
+  if (wMoods.length >= 5 && rMoods.length >= 5) {
+    const wAvg = wMoods.reduce((a, b) => a + b, 0) / wMoods.length;
+    const rAvg = rMoods.reduce((a, b) => a + b, 0) / rMoods.length;
+    if (wAvg - rAvg >= 0.5) insights.push({ icon: "😊", color: "#00E676", text: `Настроение после тренировок на ${(wAvg - rAvg).toFixed(1)} балла выше — данные не врут` });
+  }
+
+  // Goal deadline warning
+  goals.filter(g => !g.completed && g.deadline).forEach(g => {
+    const daysLeft = Math.ceil((new Date(g.deadline + "T12:00:00").getTime() - Date.now()) / 86400000);
+    const pct = Math.round((g.currentValue / Math.max(g.targetValue, 1)) * 100);
+    if (daysLeft > 0 && daysLeft <= 7 && pct < 80) insights.push({ icon: "🎯", color: "#FF4455", text: `«${g.title}»: ${daysLeft} дней, выполнено ${pct}% — ускоряйся!` });
+  });
+
+  // Water
+  const waterDays = journal.filter(j => j.waterGlasses >= 8).length;
+  if (waterDays >= 7) insights.push({ icon: "💧", color: "#00C4F0", text: "7+ дней выполняешь норму воды — привычка сформирована!" });
+
+  // Consistency this week
+  const thisWeekDone = weekDates().filter((d, i) => {
+    if (PLAN[i].type === "rest") return false;
+    return history[fmt(d)]?.completed;
+  }).length;
+  const thisWeekTotal = PLAN.filter(p => p.type !== "rest").length;
+  if (thisWeekDone === thisWeekTotal) insights.push({ icon: "⭐", color: "#FFD600", text: "Идеальная неделя — все тренировки выполнены!" });
+
+  return insights.slice(0, 3);
+}
+
+/* ── Goal forecast ── */
+export function goalForecast(goal: any) {
+  if (!goal || goal.completed || !goal.history || goal.history.length < 2) return null;
+  const sorted = goal.history.slice().sort((a: any, b: any) => a.date > b.date ? 1 : -1);
+  const first = sorted[0]; const last = sorted[sorted.length - 1];
+  const daysDiff = Math.max(1, Math.round((new Date(last.date + "T12:00:00").getTime() - new Date(first.date + "T12:00:00").getTime()) / 86400000));
+  const ratePerDay = (last.value - first.value) / daysDiff;
+  if (ratePerDay <= 0) return null;
+  const remaining = goal.targetValue - goal.currentValue;
+  const daysNeeded = Math.ceil(remaining / ratePerDay);
+  const targetDate = new Date(); targetDate.setDate(targetDate.getDate() + daysNeeded);
+  return { daysNeeded, date: targetDate.toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) };
+}
+
+/* ── Monthly stats ── */
+export function getMonthlyStats(history: Record<string, any>, journal: any[], month: Date) {
+  const start = new Date(month); start.setHours(0, 0, 0, 0);
+  const end = new Date(start); end.setMonth(end.getMonth() + 1);
+  const days: any[] = [];
+  for (let d = new Date(start); d < end; d.setDate(d.getDate() + 1)) {
+    const ds = fmt(d);
+    const dayOfWeek = d.getDay();
+    const planI = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    days.push({
+      date: ds,
+      workout: history[ds]?.completed || false,
+      difficulty: history[ds]?.difficulty || 0,
+      mood: journal.filter(j => j.date === ds).slice(-1)[0]?.mood || null,
+      sleep: journal.filter(j => j.date === ds).slice(-1)[0]?.sleep || null,
+      isRest: PLAN[planI]?.type === "rest",
+    });
+  }
+  const workoutDays = days.filter(d => d.workout).length;
+  const totalDays = days.filter(d => !d.isRest).length;
+  const workoutDaysWithDiff = days.filter(d => d.workout && d.difficulty > 0);
+  const avgDiff = workoutDaysWithDiff.length > 0
+    ? (workoutDaysWithDiff.reduce((s, d) => s + d.difficulty, 0) / workoutDaysWithDiff.length).toFixed(1)
+    : "0";
+  const moodEntries = days.filter(d => d.mood);
+  const avgMood = moodEntries.length ? (moodEntries.reduce((s, d) => s + d.mood, 0) / moodEntries.length).toFixed(1) : null;
+  const sleepEntries = days.filter(d => d.sleep);
+  const avgSleep = sleepEntries.length ? (sleepEntries.reduce((s, d) => s + d.sleep, 0) / sleepEntries.length).toFixed(1) : null;
+  return {
+    workoutDays, totalDays, avgDiff, avgMood, avgSleep,
+    consistency: totalDays > 0 ? Math.round((workoutDays / totalDays) * 100) : 0,
+    days,
+  };
+}
