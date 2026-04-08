@@ -37,10 +37,8 @@ jobs:
 
       - name: Export JS bundle
         run: |
-          npx expo export --platform android --output-dir dist
           mkdir -p android/app/src/main/assets
-          BUNDLE_FILE=$(ls dist/_expo/static/js/android/*.hbc | head -1)
-          cp "$BUNDLE_FILE" android/app/src/main/assets/index.android.bundle
+          npx metro build index.tsx --out android/app/src/main/assets/index.android.bundle --platform android --dev false --minify
 
       - name: Build APK
         run: cd android && ./gradlew assembleDebug --no-daemon
