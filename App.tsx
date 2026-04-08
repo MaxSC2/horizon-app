@@ -2607,7 +2607,7 @@ const StatsTab = React.memo(function StatsTab({ T, history, tasks, goals, journa
       </ScrollView>
     </View>
   );
-}
+});
 
 /* ══════════ ANATOMY TAB ══════════ */
 function AnatomyTab({ T, history }: any) {
