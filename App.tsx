@@ -102,11 +102,44 @@ function Btn({ children, onPress, variant = "primary", style, T, disabled }: { c
   );
 }
 
-function Ring({ pct, size = 64, color, label, T }: any) {
+function Ring({ pct, size = 64, color, label, T, strokeWidth, showPercent }: any) {
+  const sw = strokeWidth || size / 8;
+  const r = (size - sw) / 2;
+  const circumference = 2 * Math.PI * r;
+  const progress = Math.min(pct, 100) / 100;
+  const strokeDashoffset = circumference * (1 - progress);
+  
   return (
     <View style={{ alignItems: "center", gap: 3 }}>
       <View style={{ width: size, height: size, justifyContent: "center", alignItems: "center" }}>
-        <Text style={{ fontSize: 13, fontWeight: "900", color }}>{pct}%</Text>
+        <Svg width={size} height={size} style={{ position: "absolute" }}>
+          <Circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            stroke={T.lo}
+            strokeWidth={sw}
+            fill="none"
+          />
+          <Circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            stroke={color}
+            strokeWidth={sw}
+            fill="none"
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+            rotation={-90}
+            origin={`${size / 2}, ${size / 2}`}
+          />
+        </Svg>
+        <View style={{ justifyContent: "center", alignItems: "center" }}>
+          {showPercent !== false && (
+            <Text style={{ fontSize: size / 4, fontWeight: "900", color }}>{Math.round(pct)}%</Text>
+          )}
+        </View>
       </View>
       {label && <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 10, color: T.muted, letterSpacing: 0.5, textTransform: "uppercase" }}>{label}</Text>}
     </View>
@@ -631,32 +664,85 @@ function DashboardTab({ T, state, setState, onStartWorkout }: any) {
         <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 11, color: T.primary, marginTop: 6 }}>— {quote.author.toUpperCase()}</Text>
       </Card>
 
-      <Card T={T} style={{ backgroundColor: `${T.primary}08`, borderColor: `${T.primary}33` }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <View>
-            <Lbl T={T}>Score недели</Lbl>
-            <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 38, color: score.total >= 80 ? T.success : score.total >= 50 ? T.warn : T.danger }}>
-              {score.total}<Text style={{ fontSize: 18, color: T.muted }}>/100</Text>
-            </Text>
+      <Card T={T} style={{ backgroundColor: T.card }}>
+        <View style={{ alignItems: "center", marginBottom: 16 }}>
+          {/* Main score ring */}
+          <View style={{ width: 160, height: 160, justifyContent: "center", alignItems: "center" }}>
+            <Svg width={160} height={160} style={{ position: "absolute" }}>
+              <Circle cx={80} cy={80} r={68} stroke={T.lo} strokeWidth={14} fill="none" />
+              <Circle
+                cx={80} cy={80} r={68}
+                stroke={score.total >= 80 ? T.success : score.total >= 50 ? T.warn : T.danger}
+                strokeWidth={14}
+                fill="none"
+                strokeDasharray={2 * Math.PI * 68}
+                strokeDashoffset={2 * Math.PI * 68 * (1 - score.total / 100)}
+                strokeLinecap="round"
+                rotation={-90}
+                origin="80, 80"
+              />
+            </Svg>
+            <View style={{ alignItems: "center" }}>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 48, color: score.total >= 80 ? T.success : score.total >= 50 ? T.warn : T.danger }}>
+                {score.total}
+              </Text>
+              <Text style={{ fontFamily: "System", fontSize: 14, color: T.muted }}>из 100</Text>
+            </View>
           </View>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <Ring pct={score.workout} color={T.primary} label="Трен." T={T} />
-            {score.tasks !== null && <Ring pct={score.tasks} color={T.success} label="Задачи" T={T} />}
-            <Ring pct={score.journal} color={T.warn} label="Дневн." T={T} />
+          <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 11, color: T.muted, marginTop: 8, letterSpacing: 1, textTransform: "uppercase" }}>WEEKLY SCORE</Text>
+        </View>
+
+        {/* Sub rings */}
+        <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
+          <View style={{ alignItems: "center" }}>
+            <View style={{ width: 50, height: 50, justifyContent: "center", alignItems: "center" }}>
+              <Svg width={50} height={50} style={{ position: "absolute" }}>
+                <Circle cx={25} cy={25} r={20} stroke={T.lo} strokeWidth={5} fill="none" />
+                <Circle cx={25} cy={25} r={20} stroke={T.primary} strokeWidth={5} fill="none" strokeDasharray={2 * Math.PI * 20} strokeDashoffset={2 * Math.PI * 20 * (1 - score.workout / 100)} strokeLinecap="round" rotation={-90} origin="25, 25" />
+              </Svg>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 14, color: T.primary }}>{score.workout}%</Text>
+            </View>
+            <Text style={{ fontFamily: "System", fontSize: 9, color: T.muted, marginTop: 2 }}>Тренировки</Text>
+          </View>
+          {score.tasks !== null && (
+            <View style={{ alignItems: "center" }}>
+              <View style={{ width: 50, height: 50, justifyContent: "center", alignItems: "center" }}>
+                <Svg width={50} height={50} style={{ position: "absolute" }}>
+                  <Circle cx={25} cy={25} r={20} stroke={T.lo} strokeWidth={5} fill="none" />
+                  <Circle cx={25} cy={25} r={20} stroke={T.success} strokeWidth={5} fill="none" strokeDasharray={2 * Math.PI * 20} strokeDashoffset={2 * Math.PI * 20 * (1 - score.tasks / 100)} strokeLinecap="round" rotation={-90} origin="25, 25" />
+                </Svg>
+                <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 14, color: T.success }}>{score.tasks}%</Text>
+              </View>
+              <Text style={{ fontFamily: "System", fontSize: 9, color: T.muted, marginTop: 2 }}>Задачи</Text>
+            </View>
+          )}
+          <View style={{ alignItems: "center" }}>
+            <View style={{ width: 50, height: 50, justifyContent: "center", alignItems: "center" }}>
+              <Svg width={50} height={50} style={{ position: "absolute" }}>
+                <Circle cx={25} cy={25} r={20} stroke={T.lo} strokeWidth={5} fill="none" />
+                <Circle cx={25} cy={25} r={20} stroke={T.warn} strokeWidth={5} fill="none" strokeDasharray={2 * Math.PI * 20} strokeDashoffset={2 * Math.PI * 20 * (1 - score.journal / 100)} strokeLinecap="round" rotation={-90} origin="25, 25" />
+              </Svg>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 14, color: T.warn }}>{score.journal}%</Text>
+            </View>
+            <Text style={{ fontFamily: "System", fontSize: 9, color: T.muted, marginTop: 2 }}>Дневник</Text>
           </View>
         </View>
-        {workoutStreak > 0 && (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 8 }}>
-            <Text style={{ fontSize: 13 }}>🔥</Text>
-            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 14, color: T.warn }}>Серия {workoutStreak} дн.</Text>
-          </View>
-        )}
-        {achievements.length > 0 && (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 6 }}>
-            <Text style={{ fontSize: 13 }}>🏆</Text>
-            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 13, color: T.warn }}>{achievements.length} достиж.</Text>
-          </View>
-        )}
+
+        {/* Streak & Achievements */}
+        <View style={{ flexDirection: "row", justifyContent: "center", gap: 16, marginTop: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: T.bord }}>
+          {workoutStreak > 0 && (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <Text style={{ fontSize: 16 }}>🔥</Text>
+              <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 14, color: T.warn }}>{workoutStreak} дней</Text>
+            </View>
+          )}
+          {achievements.length > 0 && (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <Text style={{ fontSize: 16 }}>🏆</Text>
+              <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 14, color: T.primary }}>{achievements.length}</Text>
+            </View>
+          )}
+        </View>
       </Card>
 
       {/* Daily Focus */}
@@ -3066,19 +3152,6 @@ function NutritionTab({ T, state, setState }: any) {
     setState((s: any) => ({ ...s, nutrition: { ...s.nutrition, [TODAY]: updated } }));
   };
 
-  const macroRing = (current: number, goal: number, color: string, label: string, unit: string) => {
-    const pct = Math.min(100, Math.round((current / Math.max(goal, 1)) * 100));
-    return (
-      <View style={{ flex: 1, alignItems: "center" }}>
-        <View style={{ width: 56, height: 56, justifyContent: "center", alignItems: "center" }}>
-          <Text style={{ fontSize: 14, fontWeight: "900", color }}>{current}</Text>
-          <Text style={{ fontSize: 8, color: T.muted }}>/ {goal}{unit}</Text>
-        </View>
-        <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 10, color: T.muted, marginTop: 2 }}>{label}</Text>
-      </View>
-    );
-  };
-
   // Last 7 days calorie bar
   const last7 = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(); d.setDate(d.getDate() - 6 + i);
@@ -3088,27 +3161,114 @@ function NutritionTab({ T, state, setState }: any) {
   });
   const maxCal = Math.max(...last7.map(d => d.cal), MACRO_GOALS.calories);
 
+  const calPct = Math.min(100, Math.round((todayData.calories / Math.max(MACRO_GOALS.calories, 1)) * 100));
+  const proteinPct = Math.min(100, Math.round((todayData.protein / Math.max(MACRO_GOALS.protein, 1)) * 100));
+  const carbsPct = Math.min(100, Math.round((todayData.carbs / Math.max(MACRO_GOALS.carbs, 1)) * 100));
+  const fatPct = Math.min(100, Math.round((todayData.fat / Math.max(MACRO_GOALS.fat, 1)) * 100));
+
   return (
     <ScrollView style={{ flex: 1, padding: 14 }} contentContainerStyle={{ gap: 12, paddingBottom: 33 }}>
       <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 24, color: T.txt }}>🥗 Питание</Text>
 
-      {/* Macro rings */}
-      <Card T={T}>
-        <Lbl T={T}>Сегодня</Lbl>
-        <View style={{ flexDirection: "row", marginTop: 12, gap: 4 }}>
-          {macroRing(todayData.calories, MACRO_GOALS.calories, T.primary, "Кал", "")}
-          {macroRing(Math.round(todayData.protein), MACRO_GOALS.protein, T.success, "Белки", "г")}
-          {macroRing(Math.round(todayData.carbs), MACRO_GOALS.carbs, T.warn, "Углев", "г")}
-          {macroRing(Math.round(todayData.fat), MACRO_GOALS.fat, T.danger, "Жиры", "г")}
-        </View>
-        {/* Calorie bar */}
-        <View style={{ marginTop: 12 }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-            <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted }}>{todayData.calories} / {MACRO_GOALS.calories} ккал</Text>
-            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 12, color: todayData.calories > MACRO_GOALS.calories ? T.danger : T.primary }}>{Math.round((todayData.calories / MACRO_GOALS.calories) * 100)}%</Text>
+      {/* Modern Rings Card */}
+      <Card T={T} style={{ backgroundColor: T.card }}>
+        {/* Main calorie ring */}
+        <View style={{ alignItems: "center", marginBottom: 16 }}>
+          <View style={{ width: 140, height: 140, justifyContent: "center", alignItems: "center" }}>
+            <Svg width={140} height={140} style={{ position: "absolute" }}>
+              <Circle cx={70} cy={70} r={58} stroke={T.lo} strokeWidth={12} fill="none" />
+              <Circle
+                cx={70} cy={70} r={58}
+                stroke={todayData.calories > MACRO_GOALS.calories ? T.danger : T.primary}
+                strokeWidth={12}
+                fill="none"
+                strokeDasharray={2 * Math.PI * 58}
+                strokeDashoffset={2 * Math.PI * 58 * (1 - calPct / 100)}
+                strokeLinecap="round"
+                rotation={-90}
+                origin="70, 70"
+              />
+            </Svg>
+            <View style={{ alignItems: "center" }}>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 32, color: T.txt }}>{todayData.calories}</Text>
+              <Text style={{ fontFamily: "System", fontSize: 12, color: T.muted }}>из {MACRO_GOALS.calories}</Text>
+              <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 14, color: todayData.calories > MACRO_GOALS.calories ? T.danger : T.primary, marginTop: 2 }}>
+                {calPct}%
+              </Text>
+            </View>
           </View>
-          <View style={{ height: 8, backgroundColor: T.lo, borderRadius: 4 }}>
-            <View style={{ height: "100%", width: `${Math.min(100, (todayData.calories / MACRO_GOALS.calories) * 100)}%`, backgroundColor: todayData.calories > MACRO_GOALS.calories ? T.danger : T.primary, borderRadius: 4 }} />
+          <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 11, color: T.muted, marginTop: 8, letterSpacing: 1, textTransform: "uppercase" }}>КАЛОРИИ СЕГОДНЯ</Text>
+        </View>
+
+        {/* Macro rings row */}
+        <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
+          {/* Protein */}
+          <View style={{ alignItems: "center" }}>
+            <View style={{ width: 70, height: 70, justifyContent: "center", alignItems: "center" }}>
+              <Svg width={70} height={70} style={{ position: "absolute" }}>
+                <Circle cx={35} cy={35} r={28} stroke={T.lo} strokeWidth={6} fill="none" />
+                <Circle
+                  cx={35} cy={35} r={28}
+                  stroke={T.success}
+                  strokeWidth={6}
+                  fill="none"
+                  strokeDasharray={2 * Math.PI * 28}
+                  strokeDashoffset={2 * Math.PI * 28 * (1 - proteinPct / 100)}
+                  strokeLinecap="round"
+                  rotation={-90}
+                  origin="35, 35"
+                />
+              </Svg>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 18, color: T.success }}>{Math.round(todayData.protein)}</Text>
+            </View>
+            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 10, color: T.success, marginTop: 4 }}>БЕЛОК</Text>
+            <Text style={{ fontFamily: "System", fontSize: 9, color: T.muted }}>{MACRO_GOALS.protein}г</Text>
+          </View>
+
+          {/* Carbs */}
+          <View style={{ alignItems: "center" }}>
+            <View style={{ width: 70, height: 70, justifyContent: "center", alignItems: "center" }}>
+              <Svg width={70} height={70} style={{ position: "absolute" }}>
+                <Circle cx={35} cy={35} r={28} stroke={T.lo} strokeWidth={6} fill="none" />
+                <Circle
+                  cx={35} cy={35} r={28}
+                  stroke={T.warn}
+                  strokeWidth={6}
+                  fill="none"
+                  strokeDasharray={2 * Math.PI * 28}
+                  strokeDashoffset={2 * Math.PI * 28 * (1 - carbsPct / 100)}
+                  strokeLinecap="round"
+                  rotation={-90}
+                  origin="35, 35"
+                />
+              </Svg>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 18, color: T.warn }}>{Math.round(todayData.carbs)}</Text>
+            </View>
+            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 10, color: T.warn, marginTop: 4 }}>УГЛЕВОДЫ</Text>
+            <Text style={{ fontFamily: "System", fontSize: 9, color: T.muted }}>{MACRO_GOALS.carbs}г</Text>
+          </View>
+
+          {/* Fat */}
+          <View style={{ alignItems: "center" }}>
+            <View style={{ width: 70, height: 70, justifyContent: "center", alignItems: "center" }}>
+              <Svg width={70} height={70} style={{ position: "absolute" }}>
+                <Circle cx={35} cy={35} r={28} stroke={T.lo} strokeWidth={6} fill="none" />
+                <Circle
+                  cx={35} cy={35} r={28}
+                  stroke={T.danger}
+                  strokeWidth={6}
+                  fill="none"
+                  strokeDasharray={2 * Math.PI * 28}
+                  strokeDashoffset={2 * Math.PI * 28 * (1 - fatPct / 100)}
+                  strokeLinecap="round"
+                  rotation={-90}
+                  origin="35, 35"
+                />
+              </Svg>
+              <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 18, color: T.danger }}>{Math.round(todayData.fat)}</Text>
+            </View>
+            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 10, color: T.danger, marginTop: 4 }}>ЖИРЫ</Text>
+            <Text style={{ fontFamily: "System", fontSize: 9, color: T.muted }}>{MACRO_GOALS.fat}г</Text>
           </View>
         </View>
       </Card>
