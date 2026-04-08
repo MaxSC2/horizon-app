@@ -23,6 +23,7 @@ import {
   MOODS, ENERGY, THEME_LIST, DEFAULTS,
   FOOD_PRESETS, MACRO_GOALS, STYLE_LIST,
 } from "./src/data/constants";
+import { useStyledIcon } from "./src/components/useStyledIcon";
 
 const W = Dimensions.get("window").width;
 const MAX_W = Math.min(W, 480);
@@ -231,12 +232,19 @@ function OnboardingScreen({ T, onComplete }: any) {
 }
 
 /* ══════════ HEADER ══════════ */
-function Header({ T, streak, onOpenThemes }: any) {
+function Header({ T, streak, onOpenThemes, styleId }: any) {
+  const { getIcon } = useStyledIcon(styleId || "standard");
+  
+  const getStyleRadius = () => {
+    const style = STYLE_LIST.find(s => s.id === (styleId || "standard"));
+    return style?.radius || 12;
+  };
+  
   return (
     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: T.bord, backgroundColor: T.surf }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-        <View style={{ width: 32, height: 32, borderRadius: 9, backgroundColor: `${T.primary}20`, borderColor: `${T.primary}44`, borderWidth: 1.5, justifyContent: "center", alignItems: "center" }}>
-          <Text style={{ fontSize: 17 }}>🌅</Text>
+        <View style={{ width: 32, height: 32, borderRadius: getStyleRadius(), backgroundColor: `${T.primary}20`, borderColor: `${T.primary}44`, borderWidth: 1.5, justifyContent: "center", alignItems: "center" }}>
+          {getIcon("rest", T.primary)}
         </View>
         <View>
           <Text style={{ fontFamily: "System", fontWeight: "900", fontSize: 22, letterSpacing: 2, color: T.txt }}>ГОРИЗОНТ</Text>
@@ -250,7 +258,7 @@ function Header({ T, streak, onOpenThemes }: any) {
             <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 15, color: T.warn }}>{streak}</Text>
           </View>
         )}
-        <TouchableOpacity onPress={onOpenThemes} style={{ width: 34, height: 34, borderRadius: 9, borderColor: T.bord, borderWidth: 1, backgroundColor: T.lo, justifyContent: "center", alignItems: "center" }}>
+        <TouchableOpacity onPress={onOpenThemes} style={{ width: 34, height: 34, borderRadius: getStyleRadius(), borderColor: T.bord, borderWidth: 1, backgroundColor: T.lo, justifyContent: "center", alignItems: "center" }}>
           <Text style={{ fontSize: 16 }}>🎨</Text>
         </TouchableOpacity>
       </View>
@@ -456,25 +464,63 @@ function StylePicker({ T, currentStyleId, onSelect, onClose }: any) {
 }
 
 /* ══════════ BOTTOM NAV ══════════ */
-function BottomNav({ T, tab, setTab, hasActive }: any) {
+function BottomNav({ T, tab, setTab, hasActive, styleId }: any) {
+  const { getIcon } = useStyledIcon(styleId || "standard");
+  
+  const getTabIcon = (id: string) => {
+    switch (id) {
+      case "dashboard": return getIcon("rest", isActive(id) ? T.primary : T.muted);
+      case "workout": return getIcon("workout", isActive(id) ? T.primary : T.muted);
+      case "tasks": return getIcon("task", isActive(id) ? T.primary : T.muted);
+      case "nutrition": return getIcon("food", isActive(id) ? T.primary : T.muted);
+      case "journal": return getIcon("water", isActive(id) ? T.primary : T.muted);
+      case "ai": return <Text style={{ fontSize: 18 }}>🤖</Text>;
+      case "stats": return <Text style={{ fontSize: 18 }}>📊</Text>;
+      default: return null;
+    }
+  };
+  
+  const isActive = (id: string) => tab === id;
+  
   const tabs = [
-    { id: "dashboard", label: "🏠", label2: "ГОРИЗОНТ" },
-    { id: "workout", label: hasActive ? "⚡" : "💪", label2: "ТРЕН." },
-    { id: "tasks", label: "📋", label2: "ЗАДАЧИ" },
-    { id: "nutrition", label: "🍎", label2: "ПИТАНИЕ" },
-    { id: "journal", label: "📓", label2: "ДНЕВН." },
-    { id: "ai", label: "🤖", label2: "РАЗУМ" },
-    { id: "stats", label: "📊", label2: "СТАТЫ" },
+    { id: "dashboard", label2: "ГОРИЗОНТ" },
+    { id: "workout", label2: "ТРЕН." },
+    { id: "tasks", label2: "ЗАДАЧИ" },
+    { id: "nutrition", label2: "ПИТАНИЕ" },
+    { id: "journal", label2: "ДНЕВН." },
+    { id: "ai", label2: "РАЗУМ" },
+    { id: "stats", label2: "СТАТЫ" },
   ];
+  
+  const getStyleRadius = () => {
+    const style = STYLE_LIST.find(s => s.id === (styleId || "standard"));
+    return style?.radius || 12;
+  };
+  
   return (
     <View style={{ flexDirection: "row", backgroundColor: T.surf, borderTopWidth: 1, borderTopColor: T.bord, paddingBottom: 8 }}>
-      {tabs.map(({ id, label, label2 }) => {
-        const isActive = tab === id;
+      {tabs.map(({ id, label2 }) => {
+        const active = isActive(id);
         return (
           <TouchableOpacity key={id} onPress={() => setTab(id)}
-            style={{ flex: 1, alignItems: "center", paddingVertical: 6, borderTopWidth: 2.5, borderTopColor: isActive ? T.primary : "transparent" }}>
-            <Text style={{ fontSize: 18 }}>{label}</Text>
-            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 8, color: isActive ? T.primary : T.muted, marginTop: 2, letterSpacing: 0.5 }}>{label2}</Text>
+            style={{ 
+              flex: 1, 
+              alignItems: "center", 
+              paddingVertical: 6, 
+              borderTopWidth: 2.5, 
+              borderTopColor: active ? T.primary : "transparent",
+            }}>
+            <View style={{
+              width: 28,
+              height: 28,
+              borderRadius: getStyleRadius() / 2,
+              backgroundColor: active ? `${T.primary}15` : "transparent",
+              justifyContent: "center",
+              alignItems: "center",
+            }}>
+              {getTabIcon(id)}
+            </View>
+            <Text style={{ fontFamily: "System", fontWeight: "700", fontSize: 8, color: active ? T.primary : T.muted, marginTop: 2, letterSpacing: 0.5 }}>{label2}</Text>
           </TouchableOpacity>
         );
       })}
@@ -3288,7 +3334,7 @@ export default function App() {
       {showThemes && <ThemePicker T={T} currentThemeId={themeId} currentStyleId={styleThemeId} onSelect={(id: string) => setState((s: any) => ({ ...s, themeId: id }))} onStyleSelect={(id: string) => setState((s: any) => ({ ...s, styleThemeId: id }))} onClose={() => setShowThemes(false)} />}
       {showPlanEditor && <PlanEditorModal T={T} customPlan={state.customPlan} onSave={(plan: any) => setState((s: any) => ({ ...s, customPlan: plan }))} onClose={() => setShowPlanEditor(false)} />}
       <View style={{ flex: 1, maxWidth: MAX_W, alignSelf: "center", width: "100%", paddingTop: insets.top, paddingBottom: insets.bottom }}>
-        <Header T={T} streak={state.streak || 0} onOpenThemes={() => setShowThemes(true)} />
+        <Header T={T} streak={state.streak || 0} onOpenThemes={() => setShowThemes(true)} styleId={styleThemeId} />
         <View style={{ flex: 1 }}>
           {tab === "dashboard" && <DashboardTab T={T} state={state} setState={setState} onStartWorkout={startWorkout} />}
           {tab === "workout" && <WorkoutTab T={T} session={session} setSession={setSession} onFinish={finishWorkout} prs={prs} history={state.history} onStart={startWorkout} onEditPlan={() => setShowPlanEditor(true)} onEditHistory={(date: string, log: any) => setState((s: any) => ({ ...s, history: { ...s.history, [date]: log } }))} hasCustomPlan={!!state.customPlan} />}
@@ -3298,7 +3344,7 @@ export default function App() {
           {tab === "ai" && <MentorTab T={T} state={state} setState={setState} />}
           {tab === "stats" && <StatsTab T={T} history={state.history} tasks={state.tasks || []} goals={state.goals || []} journal={state.journal || []} achievements={state.achievements || []} user={state.user} setState={setState} />}
         </View>
-        <BottomNav T={T} tab={tab} setTab={setTab} hasActive={!!session} />
+        <BottomNav T={T} tab={tab} setTab={setTab} hasActive={!!session} styleId={styleThemeId} />
       </View>
     </View>
   );
