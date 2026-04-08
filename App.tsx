@@ -2699,7 +2699,7 @@ function AnatomyTab({ T, history }: any) {
       </View>
     </>
   );
-});
+}
 
 /* ══════════ PROFILE TAB ══════════ */
 function ProfileTab({ T, state, setState }: any) {
