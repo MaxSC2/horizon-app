@@ -502,13 +502,13 @@ function BottomNav({ T, tab, setTab, hasActive, styleId }: any) {
   
   const getTabIcon = (id: string) => {
     switch (id) {
-      case "dashboard": return getIcon("rest", isActive(id) ? T.primary : T.muted);
+      case "dashboard": return getIcon("sunrise", isActive(id) ? T.primary : T.muted);
       case "workout": return getIcon("workout", isActive(id) ? T.primary : T.muted);
       case "tasks": return getIcon("task", isActive(id) ? T.primary : T.muted);
-      case "nutrition": return getIcon("food", isActive(id) ? T.primary : T.muted);
-      case "journal": return getIcon("water", isActive(id) ? T.primary : T.muted);
-      case "ai": return <Text style={{ fontSize: 18 }}>🤖</Text>;
-      case "stats": return <Text style={{ fontSize: 18 }}>📊</Text>;
+      case "nutrition": return getIcon("leaf", isActive(id) ? T.primary : T.muted);
+      case "journal": return getIcon("book", isActive(id) ? T.primary : T.muted);
+      case "ai": return getIcon("ai", isActive(id) ? T.primary : T.muted);
+      case "stats": return getIcon("stats", isActive(id) ? T.primary : T.muted);
       default: return null;
     }
   };

@@ -308,4 +308,44 @@ export const Icons = {
       <Path d="M8 12l3 3 5-5" stroke={color} strokeWidth={2} strokeOpacity={0.8} strokeLinecap="round" />
     </Svg>
   ),
+
+  // === NAVIGATION ICONS (shared) ===
+  // Sparkles (AI) - like lucide Sparkles
+  ai: (color: string) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 3L13.5 8.5L19 10L13.5 11.5L12 17L10.5 11.5L5 10L10.5 8.5L12 3Z" stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M5 3L5.5 5L7 5.5L5.5 6L5 8L4.5 6L3 5.5L4.5 5L5 3Z" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M19 17L19.5 19L21 19.5L19.5 20L19 22L18.5 20L17 19.5L18.5 19L19 17Z" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  ),
+
+  // BarChart2 (Stats) - like lucide BarChart2
+  stats: (color: string) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M18 3v6M14 3v12M10 3v9M6 3v15" stroke={color} strokeWidth={strokeW} strokeLinecap="round" />
+    </Svg>
+  ),
+
+  // Sunrise (Dashboard) - like lucide Sunrise
+  sunrise: (color: string) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 2v2M12 20v2M4 12H2M6.3 5.3l-1.4-1.4M17.7 5.3l1.4-1.4M17.7 17.7l1.4 1.4M6.3 17.7L4.9 19.1" stroke={color} strokeWidth={strokeW} strokeLinecap="round" />
+      <Path d="M12 6a6 6 0 016 6c0 3.3-2.7 6-6 6s-6-2.7-6-6a6 6 0 016-6z" stroke={color} strokeWidth={strokeW} />
+    </Svg>
+  ),
+
+  // Leaf (Nutrition) - like lucide Leaf
+  leaf: (color: string) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 22c-4-4-8-7.6-8-12a8 8 0 0116 0c0 4.4-4 8-8 12z" stroke={color} strokeWidth={strokeW} />
+      <Path d="M12 10c-3-3-6-4-8-4 2 0 4 2 6 4" stroke={color} strokeWidth={strokeW} strokeLinecap="round" />
+    </Svg>
+  ),
+
+  // BookOpen (Journal) - like lucide BookOpen
+  book: (color: string) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 6.5c2.5-2 5-2.5 7-2.5 3 0 5 2 5 5v9c0 2-1.5 3.5-3.5 3.5-1.5 0-2.5-.5-3.5-1.5M12 6.5C9.5 8.5 7 9 5 9 2.5 9 1 11.5 1 14.5v9C1 21.5 2.5 23 4.5 23 6 23 7 22.5 8 21.5M12 6.5v14" stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  ),
 };
