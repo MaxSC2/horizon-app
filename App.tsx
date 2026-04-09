@@ -499,6 +499,7 @@ function StylePicker({ T, currentStyleId, onSelect, onClose }: any) {
 /* ══════════ BOTTOM NAV ══════════ */
 function BottomNav({ T, tab, setTab, hasActive, styleId }: any) {
   const { getIcon } = useStyledIcon(styleId || "standard");
+  const isActive = (id: string) => tab === id;
   
   const getTabIcon = (id: string) => {
     switch (id) {
@@ -512,8 +513,6 @@ function BottomNav({ T, tab, setTab, hasActive, styleId }: any) {
       default: return null;
     }
   };
-  
-  const isActive = (id: string) => tab === id;
   
   const tabs = [
     { id: "dashboard", label2: "ГОРИЗОНТ" },
